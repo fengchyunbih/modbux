@@ -60,6 +60,29 @@ type WriteAttempt =
   | { sent: false }
   | { sent: true; transactionIdKey: string; errorMessage: string | undefined }
 
+/**
+ * What a write did, for a caller in main that wants to know.
+ *
+ * A write refused before it goes out answers `written: false`: `not_connected`
+ * is a port that is shut, `busy` another owner holding the client, and
+ * `refused` a request Modbux cannot put on the wire. A write that went out
+ * answers `written: true`, with the device's error where it answered one. Each
+ * refusal has already put its message in the window.
+ */
+export type WriteOutcome =
+  | { written: false; reason: 'not_connected' | 'busy' | 'refused' }
+  | { written: true; error?: string }
+
+/**
+ * A write whose words are already encoded, or a run of coils.
+ *
+ * `single` asks for FC5 or FC6, which carry exactly one coil or one word;
+ * otherwise the write is FC15 or FC16.
+ */
+export type RawWriteRequest =
+  | { type: 'coils'; address: number; values: boolean[]; single: boolean }
+  | { type: 'holding_registers'; address: number; words: number[]; single: boolean }
+
 /** A group whose request failed, with the text the read reported for it. */
 export interface ReadGroupError {
   group: AddressGroup
@@ -908,14 +931,39 @@ export class ModbusClient {
   //
   // Write
   public write = async (writeParameters: WriteParameters): Promise<void> => {
+    const { address, type, value, dataType, single } = writeParameters
+    await this._writeOwningTheClient(() =>
+      type === 'coils'
+        ? this._writeCoil(address, value, single)
+        : this._writeRegister(address, value, dataType, single)
+    )
+  }
+
+  /**
+   * `write` for a caller in main, with the words encoded by the caller, and
+   * what happened answered.
+   *
+   * The MCP tool `client_write` encodes in the byte order it is asked for,
+   * which need not be the client's, so it hands over words rather than a value
+   * and a data type. Everything after the encoding is `write`'s: the guards,
+   * the timeout, the transaction log and the read back.
+   */
+  public writeRaw = (request: RawWriteRequest): Promise<WriteOutcome> =>
+    this._writeOwningTheClient(() =>
+      request.type === 'coils'
+        ? this._writeCoil(request.address, request.values, request.single)
+        : this._writeWords(request.address, request.words, request.single)
+    )
+
+  private _writeOwningTheClient = async (
+    send: () => Promise<WriteAttempt>
+  ): Promise<WriteOutcome> => {
     // `writeFC5`, `writeFC6`, `writeFC15` and `writeFC16` answer a closed port
     // with a `PortNotOpenError` before they file a transaction, so a write down
     // a closed port has nothing of its own to log.
-    if (!this._requireConnected('write')) return
+    if (!this._requireConnected('write')) return { written: false, reason: 'not_connected' }
 
-    if (!this._requireClient('write')) return
-
-    const { address, type, value, dataType, single } = writeParameters
+    if (!this._requireClient('write')) return { written: false, reason: 'busy' }
 
     // The timeout the user set, the way `_read` does it. Nothing on this path
     // called `setTimeout`, so a write inherited whatever ran last on the
@@ -928,27 +976,21 @@ export class ModbusClient {
     this._clientState.writing = true
     this._sendClientState()
     try {
-      let attempt: WriteAttempt
-
-      switch (type) {
-        case 'coils':
-          attempt = await this._writeCoil(address, value, single)
-          break
-        case 'holding_registers':
-          attempt = await this._writeRegister(address, value, dataType, single)
-          break
-      }
+      const attempt = await send()
 
       // A refused write has nothing to log and nothing to read back: every
-      // `sent: false` above emitted its own warning and put no request on the
-      // wire, so the device holds what it held.
-      if (!attempt.sent) return
+      // `sent: false` emitted its own warning and put no request on the wire,
+      // so the device holds what it held.
+      if (!attempt.sent) return { written: false, reason: 'refused' }
       this._transactionLog.log(attempt.transactionIdKey, attempt.errorMessage)
 
       // Read back what the device now holds, unless a loop started during the
       // write and is reading anyway. `reading` is not in that question: this
       // write owns the client, so nothing else can have set it.
       if (!readLoopOwner(this._clientState)) await this._readOwningTheClient()
+      return attempt.errorMessage === undefined
+        ? { written: true }
+        : { written: true, error: attempt.errorMessage }
     } finally {
       this._clientState.writing = false
       this._sendClientState()
@@ -1047,15 +1089,38 @@ export class ModbusClient {
       return { sent: false }
     }
 
+    return this._writeWords(
+      address,
+      createRegisters(dataType, value, { littleEndian, byteSwap }),
+      single
+    )
+  }
+
+  private _writeWords = async (
+    address: number,
+    registers: number[],
+    single: boolean
+  ): Promise<WriteAttempt> => {
+    // FC6 carries one word and FC16 at least one, so an empty list, or more
+    // than one word for FC6, has no request to go out as.
+    const [first] = registers
+    if (first === undefined || (single && registers.length > 1)) {
+      this._emitMessage({
+        message: single ? 'A single register write carries one word' : 'No register value to write',
+        variant: 'warning',
+        error: undefined
+      })
+      return { sent: false }
+    }
+
     const { unitId } = this._appState.connectionConfig
-    const registers = createRegisters(dataType, value, { littleEndian, byteSwap })
     const transactionIdKey = this._transactionLog.nextTransactionIdKey()
 
     try {
       if (single) {
         // Write single register
         await this._awaitWrite<WriteRegisterResult>((next) =>
-          this._client.writeFC6(unitId, address, registers[0], next)
+          this._client.writeFC6(unitId, address, first, next)
         )
         return { sent: true, transactionIdKey, errorMessage: undefined }
       }

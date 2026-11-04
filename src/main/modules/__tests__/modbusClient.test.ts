@@ -2630,6 +2630,77 @@ describe('ModbusClient', () => {
       })
     })
 
+    describe('writeRaw', () => {
+      it('sends the words as given, whatever the byte order the client holds', async () => {
+        await connectClient()
+        appState.updateRegisterConfig({ littleEndian: true, byteSwap: true })
+        mockModbusRTU.writeFC16.mockImplementation(
+          (_uid: number, _addr: number, _val: number[], cb: (err: null) => void) => cb(null)
+        )
+
+        const outcome = await client.writeRaw({
+          type: 'holding_registers',
+          address: 3,
+          words: [0x1234, 0x5678],
+          single: false
+        })
+
+        expect(outcome).toEqual({ written: true })
+        expect(mockModbusRTU.writeFC16).toHaveBeenCalledWith(
+          1,
+          3,
+          [0x1234, 0x5678],
+          expect.any(Function)
+        )
+      })
+
+      it('sends one word through FC6, and refuses two words as single', async () => {
+        await connectClient()
+        mockModbusRTU.writeFC6.mockImplementation(
+          (_uid: number, _addr: number, _val: number, cb: (err: null) => void) => cb(null)
+        )
+
+        await client.writeRaw({ type: 'holding_registers', address: 1, words: [9], single: true })
+        const refused = await client.writeRaw({
+          type: 'holding_registers',
+          address: 1,
+          words: [9, 9],
+          single: true
+        })
+
+        expect(mockModbusRTU.writeFC6).toHaveBeenCalledTimes(1)
+        expect(mockModbusRTU.writeFC6).toHaveBeenCalledWith(1, 1, 9, expect.any(Function))
+        expect(refused).toEqual({ written: false, reason: 'refused' })
+      })
+
+      it('answers the exception the device answered', async () => {
+        await connectClient()
+        mockModbusRTU.writeFC15.mockImplementation(
+          (_uid: number, _addr: number, _val: boolean[], cb: (err: Error) => void) =>
+            cb(new Error('Illegal data address'))
+        )
+
+        const outcome = await client.writeRaw({
+          type: 'coils',
+          address: 0,
+          values: [true, false],
+          single: false
+        })
+
+        expect(outcome).toMatchObject({
+          written: true,
+          error: expect.stringContaining('Illegal data address')
+        })
+      })
+
+      it('answers not_connected without a connection', async () => {
+        expect(
+          await client.writeRaw({ type: 'coils', address: 0, values: [true], single: true })
+        ).toEqual({ written: false, reason: 'not_connected' })
+        expect(mockModbusRTU.writeFC5).not.toHaveBeenCalled()
+      })
+    })
+
     /**
      * `setTimeout` is client state, not request state.
      *
