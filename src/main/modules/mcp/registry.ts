@@ -21,6 +21,7 @@ export interface McpToolContext {
     | 'scanUnitIds'
     | 'stopScanningRegisters'
     | 'stopScanningUnitIds'
+    | 'writeRaw'
   >
   appState: Pick<
     AppState,

@@ -1,6 +1,32 @@
-import { byteOrderOf, clientOwner, engineeringValue, RegisterData, RegisterType } from '@shared'
-import type { ReadOutcome } from '../../modbusClient'
-import { RendererCommandError } from '../../rendererCommands'
+import z from 'zod'
+import {
+  acceptedPoints,
+  AddressNotationSchema,
+  byteOrderFlags,
+  byteOrderOf,
+  ByteOrderSchema,
+  ClientSetConnectionPayloadSchema,
+  clientMappingOf,
+  clientOwner,
+  createRegisters,
+  DataTypeSchema,
+  engineeringToRaw,
+  engineeringValue,
+  MAX_REGISTER_ADDRESS,
+  MAX_WRITE_BITS,
+  PointAddressSchema,
+  PointInterpolationSchema,
+  PointSchema,
+  readWindowOf,
+  RegisterData,
+  registerWidth,
+  RegisterType,
+  resolveAddress,
+  UnitIdSchema,
+  validatePointTable
+} from '@shared'
+import type { RawWriteRequest, ReadOutcome, WriteOutcome } from '../../modbusClient'
+import { commandFailure } from './commandFailure'
 import { defineTool, McpTool, McpToolContext, toolError, toolResult } from '../registry'
 
 /**
@@ -11,12 +37,6 @@ import { defineTool, McpTool, McpToolContext, toolError, toolResult } from '../r
  * changes it goes through `rendererCommands`; a tool that talks to the device
  * calls main's `ModbusClient` (`docs/design/json-config-and-mcp.md`, 架構決策).
  */
-
-/** The message a failed renderer command becomes. */
-const commandFailure = (error: unknown): string => {
-  if (error instanceof RendererCommandError) return error.message
-  return error instanceof Error ? error.message : String(error)
-}
 
 const connectState = (context: McpToolContext): string => context.client.state.connectState
 
@@ -238,10 +258,271 @@ const clientReadPoints = defineTool({
   }
 })
 
-/** The client tools this step ships, in the order a client lists them. */
+//
+//
+// Point table tools: the connection, a point table and a write
+
+//
+//
+// client_set_connection
+
+const CLIENT_WRITE_REFUSALS = {
+  'refused-connected':
+    'The client is connected, and these settings change the connection. Call client_disconnect first.',
+  refused: 'Modbux refused a setting, so the configuration before it is kept.'
+} as const
+
+const clientSetConnection = defineTool({
+  name: 'client_set_connection',
+  title: 'Set the client connection',
+  description:
+    'Change the connection the client opens: protocol (ModbusTcp, ModbusRtu, ModbusRtuOverTcp), unitId, tcp.host and tcp.options.port, or rtu.com and rtu.options (baudRate, parity, dataBits, stopBits). Fields left out keep their value. Refused while connected if it changes anything but the unit id. One undo step in Modbux.',
+  inputSchema: ClientSetConnectionPayloadSchema.shape,
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false
+  },
+  run: async (input, context) => {
+    try {
+      const { outcome, connectionConfig } = await context.rendererCommands.send(
+        'client_set_connection',
+        input
+      )
+      if (outcome !== 'done') return toolError(CLIENT_WRITE_REFUSALS[outcome])
+      return toolResult({ connectionConfig, connectState: connectState(context) })
+    } catch (error) {
+      return toolError(commandFailure(error))
+    }
+  }
+})
+
+//
+//
+// client_apply_point_table
+
+const clientApplyPointTable = defineTool({
+  name: 'client_apply_point_table',
+  title: 'Apply a point table to the client',
+  description:
+    "Map a device's point table onto the client: each point's address (in pdu0, one_based or modicon notation) is converted to a PDU address and register type, and its data type, scaling factor, interpolation and name/unit/comment become the register mapping. On apply, the mapping is replaced, the read window (register type, address, length) is set to cover the points of the first point's register type, and the table's byte order and unit id are set, as one undo step. Every point is answered accepted or rejected with the reason; only accepted points are applied. Rejected: unknown data type, address out of range, overlapping points, a byte order that differs from the table's (one configuration has one byte order), a byte swap (BADC, DCBA) on a 16 bit type or utf8, a unit id other than the table's. dryRun answers the report and changes nothing.",
+  inputSchema: {
+    points: z.array(PointSchema).min(1).max(10000),
+    notation: AddressNotationSchema.default('pdu0').describe(
+      'The notation of every point that does not name its own'
+    ),
+    byteOrder: ByteOrderSchema.optional().describe(
+      'The byte order of the whole table. Without it, the first 32 or 64 bit point that names one sets it'
+    ),
+    unitId: UnitIdSchema.optional().describe('The unit id the client reads'),
+    dryRun: z.boolean().default(false)
+  },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: true,
+    openWorldHint: false
+  },
+  run: async (input, context) => {
+    const report = validatePointTable(input.points, {
+      target: 'client',
+      notation: input.notation,
+      byteOrder: input.byteOrder,
+      unitId: input.unitId
+    })
+    const points = acceptedPoints(report)
+    const covered = readWindowOf(points)
+
+    if (input.dryRun) {
+      return toolResult({ dryRun: true, applied: false, ...covered, report })
+    }
+    if (!covered) {
+      return { ...toolResult({ applied: false, report }), isError: true }
+    }
+
+    try {
+      const result = await context.rendererCommands.send('client_apply_point_table', {
+        registerMapping: clientMappingOf(points),
+        window: covered.window,
+        byteOrder: report.byteOrder,
+        unitId: report.unitId
+      })
+      if (result.outcome !== 'done') return toolError(CLIENT_WRITE_REFUSALS[result.outcome])
+      return toolResult({
+        applied: true,
+        byteOrder: byteOrderOf(result.registerConfig),
+        unitId: result.unitId,
+        ...covered,
+        report
+      })
+    } catch (error) {
+      return toolError(commandFailure(error))
+    }
+  }
+})
+
+//
+//
+// client_write
+
+/** What `client_write` says about a write that went nowhere. */
+const WRITE_REFUSALS: Record<Extract<WriteOutcome, { written: false }>['reason'], string> = {
+  not_connected: 'The client is not connected. Call client_connect first.',
+  busy: 'The client is busy with another request. Try again once it has finished.',
+  refused: 'Modbux refused the write before it went out; the window says why.'
+}
+
+/** The largest FC16 carries 123 registers. */
+const MAX_WRITE_REGISTERS = 123
+
+const CLIENT_WRITE_INPUT = {
+  address: PointAddressSchema,
+  notation: AddressNotationSchema.default('pdu0'),
+  registerType: z.enum(['coils', 'holding_registers']).optional(),
+  coils: z.array(z.boolean()).min(1).max(MAX_WRITE_BITS).optional(),
+  value: z.number().optional().describe('The engineering value, for holding registers'),
+  dataType: z.string().optional(),
+  byteOrder: ByteOrderSchema.optional(),
+  scalingFactor: z.number().optional(),
+  interpolate: PointInterpolationSchema.optional(),
+  words: z.array(z.number().int().min(0).max(0xffff)).min(1).max(MAX_WRITE_REGISTERS).optional(),
+  single: z.boolean().default(false)
+}
+type ClientWriteInput = z.infer<z.ZodObject<typeof CLIENT_WRITE_INPUT>>
+
+const clientWrite = defineTool({
+  name: 'client_write',
+  title: 'Write to the device',
+  description:
+    "Write coils or holding registers on the connected device, the way the Modbux write dialog does, then read back. The address is in pdu0 (default), one_based or modicon notation. For coils give `coils` (a list of booleans). For holding registers give either `value` with `dataType` (and optionally byteOrder, default the client's; scalingFactor and interpolate, so value is the engineering value and the raw value is computed), or `words` (raw 16 bit words, written as given). `single` uses FC5/FC6 (one coil or one word) instead of FC15/FC16. Answers the words or bits written. Needs writes allowed in Modbux's settings.",
+  inputSchema: CLIENT_WRITE_INPUT,
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true
+  },
+  writesToDevice: true,
+  run: async (input, context) => {
+    const request = clientWriteRequest(input, context)
+    if (typeof request === 'string') return toolError(request)
+    if (context.client.state.connectState !== 'connected') {
+      return toolError(WRITE_REFUSALS.not_connected)
+    }
+
+    const outcome = await context.client.writeRaw(request.write)
+    if (!outcome.written) return toolError(WRITE_REFUSALS[outcome.reason])
+    const answer = {
+      registerType: request.write.type,
+      address: request.write.address,
+      unitId: context.appState.connectionConfig.unitId,
+      ...(request.write.type === 'coils'
+        ? { coils: request.write.values }
+        : { words: request.write.words }),
+      ...request.encoded
+    }
+    if (outcome.error !== undefined) {
+      return { ...toolResult({ ...answer, error: outcome.error }), isError: true }
+    }
+    return toolResult(answer)
+  }
+})
+
+/** How a value became words, which the answer repeats so the caller can check it. */
+interface EncodedValue {
+  dataType?: string
+  byteOrder?: string
+  raw?: number
+}
+
+/**
+ * The write `client_write` asks for, or why it asks for none.
+ *
+ * The value is encoded here, in the byte order asked for, so the client's own
+ * order only decides the default.
+ */
+function clientWriteRequest(
+  input: ClientWriteInput,
+  context: McpToolContext
+): { write: RawWriteRequest; encoded: EncodedValue } | string {
+  const address = resolveAddress(input.address, input.notation, input.registerType)
+  if (!address.ok) return address.reason
+  const { registerType } = address
+  if (registerType !== 'coils' && registerType !== 'holding_registers') {
+    return `${registerType} are read only; write coils or holding_registers`
+  }
+  const end = (width: number): string | undefined =>
+    address.address + width - 1 > MAX_REGISTER_ADDRESS
+      ? `${width} from ${address.address} run past ${MAX_REGISTER_ADDRESS}`
+      : undefined
+
+  if (registerType === 'coils') {
+    if (!input.coils) return 'A coil write takes `coils`, a list of booleans'
+    if (input.value !== undefined || input.words !== undefined) {
+      return 'A coil write takes `coils`, not `value` or `words`'
+    }
+    if (input.single && input.coils.length !== 1) return 'A single coil write carries one coil'
+    const pastEnd = end(input.coils.length)
+    if (pastEnd) return pastEnd
+    return {
+      write: { type: 'coils', address: address.address, values: input.coils, single: input.single },
+      encoded: {}
+    }
+  }
+
+  if (input.coils) return 'A holding register write takes `value` or `words`, not `coils`'
+  if (input.value !== undefined && input.words !== undefined) {
+    return 'A holding register write takes either `value` with `dataType`, or `words`'
+  }
+
+  let words: number[]
+  let encoded: EncodedValue = {}
+  if (input.words) {
+    words = input.words
+  } else if (input.value !== undefined) {
+    if (input.dataType === undefined) return 'A `value` needs a `dataType`'
+    const parsed = DataTypeSchema.safeParse(input.dataType)
+    if (!parsed.success) return `Data type ${input.dataType} is unknown`
+    const dataType = parsed.data
+    if (dataType === 'none' || dataType === 'utf8') {
+      return `Modbux writes no ${dataType} value; write the string's words instead`
+    }
+    const order = input.byteOrder ?? byteOrderOf(context.appState.registerConfig)
+    // A byte swap asked for on a 16 bit type is refused, as in a point table;
+    // the client's own order, taken by default, says nothing about one.
+    const swaps = input.byteOrder === 'BADC' || input.byteOrder === 'DCBA'
+    if (swaps && registerWidth(dataType) === 1) {
+      return `Byte order ${order} swaps bytes, which applies to 32 and 64 bit types, not ${dataType}`
+    }
+    const raw = engineeringToRaw(input.value, dataType, {
+      scalingFactor: input.scalingFactor,
+      interpolate: input.interpolate
+    })
+    if (!raw.ok) return raw.reason
+    words = createRegisters(dataType, raw.raw, byteOrderFlags(order))
+    encoded = { dataType, byteOrder: order, raw: raw.raw }
+  } else {
+    return 'A holding register write takes either `value` with `dataType`, or `words`'
+  }
+
+  if (input.single && words.length !== 1) return 'A single register write carries one word'
+  const pastEnd = end(words.length)
+  if (pastEnd) return pastEnd
+  return {
+    write: { type: 'holding_registers', address: address.address, words, single: input.single },
+    encoded
+  }
+}
+
+/** The client tools, in the order a client lists them. */
 export const clientTools: readonly McpTool[] = [
   clientGetConfig,
   clientConnect,
   clientDisconnect,
-  clientReadPoints
+  clientReadPoints,
+  // Point table tools
+  clientSetConnection,
+  clientApplyPointTable,
+  clientWrite
 ]

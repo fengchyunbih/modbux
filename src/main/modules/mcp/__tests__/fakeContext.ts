@@ -12,7 +12,13 @@ import {
   emptyRegisterMapping,
   RegisterMapping
 } from '@shared'
-import type { ReadOutcome, ScanRegistersOutcome, ScanUnitIdsOutcome } from '../../modbusClient'
+import type {
+  RawWriteRequest,
+  ReadOutcome,
+  ScanRegistersOutcome,
+  ScanUnitIdsOutcome,
+  WriteOutcome
+} from '../../modbusClient'
 import { McpToolContext } from '../registry'
 import { createMcpServer } from '../server'
 
@@ -25,7 +31,7 @@ export const CONFIG: ClientConfigSnapshot = {
 }
 
 /** What a stand-in renderer command answers, by name. */
-export type CommandAnswers = Partial<Record<string, () => Promise<unknown>>>
+export type CommandAnswers = Partial<Record<string, (payload: unknown) => Promise<unknown>>>
 
 export interface FakeContext extends McpToolContext {
   /** Set the client state the tools read. */
@@ -34,11 +40,13 @@ export interface FakeContext extends McpToolContext {
   setMainWindowOpen: (open: boolean) => void
   setMapping: (mapping: RegisterMapping) => void
   setReadConfiguration: (on: boolean) => void
+  setAllowWrites: (allowed: boolean) => void
   read: ReturnType<typeof vi.fn<() => Promise<ReadOutcome>>>
   scanRegisters: ReturnType<typeof vi.fn<McpToolContext['client']['scanRegisters']>>
   scanUnitIds: ReturnType<typeof vi.fn<McpToolContext['client']['scanUnitIds']>>
   stopScanningRegisters: ReturnType<typeof vi.fn<() => void>>
   stopScanningUnitIds: ReturnType<typeof vi.fn<() => void>>
+  writeRaw: ReturnType<typeof vi.fn<(request: RawWriteRequest) => Promise<WriteOutcome>>>
   send: ReturnType<typeof vi.fn>
 }
 
@@ -54,6 +62,7 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
   let mainWindowOpen = true
   let registerMapping: RegisterMapping | undefined = emptyRegisterMapping()
   let readConfiguration = false
+  let allowWrites = false
   const registerConfig = { ...defaultRegisterConfig }
   const connectionConfig = { ...defaultConnectionConfig, unitId: 7 }
 
@@ -76,9 +85,12 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
   )
   const stopScanningRegisters = vi.fn<() => void>()
   const stopScanningUnitIds = vi.fn<() => void>()
-  const send = vi.fn(async (name: string) => {
+  const writeRaw = vi.fn<(request: RawWriteRequest) => Promise<WriteOutcome>>(async () => ({
+    written: true
+  }))
+  const send = vi.fn(async (name: string, payload?: unknown) => {
     const answer = answers[name]
-    if (answer) return answer()
+    if (answer) return answer(payload)
     if (name === 'client_get_config') return CONFIG
     return { outcome: 'requested' }
   })
@@ -90,6 +102,7 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
       scanUnitIds,
       stopScanningRegisters,
       stopScanningUnitIds,
+      writeRaw,
       get state() {
         return clientState
       },
@@ -109,7 +122,7 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
     },
     rendererCommands: { send: send as unknown as McpToolContext['rendererCommands']['send'] },
     mainWindowOpen: () => mainWindowOpen,
-    allowWrites: () => false,
+    allowWrites: () => allowWrites,
     setClientState: (state) => {
       clientState = { ...clientState, ...state }
     },
@@ -125,11 +138,15 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
     setReadConfiguration: (on) => {
       readConfiguration = on
     },
+    setAllowWrites: (allowed) => {
+      allowWrites = allowed
+    },
     read,
     scanRegisters,
     scanUnitIds,
     stopScanningRegisters,
     stopScanningUnitIds,
+    writeRaw,
     send
   }
 }

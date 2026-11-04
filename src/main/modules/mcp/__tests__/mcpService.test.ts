@@ -227,6 +227,55 @@ describe('the SDK client against the endpoint', () => {
   })
 })
 
+describe('a point table over HTTP', () => {
+  it('applies a point table to the client through the SDK client', async () => {
+    const context = fakeContext({
+      client_apply_point_table: async () => ({
+        outcome: 'done',
+        registerConfig: { ...CONFIG.registerConfig, littleEndian: true },
+        unitId: 1
+      })
+    })
+    const { url } = await startService({ enabled: true }, { context })
+    const client = await sdkClient(url, TOKEN)
+
+    const result = await client.callTool({
+      name: 'client_apply_point_table',
+      arguments: {
+        notation: 'modicon',
+        unitId: 1,
+        points: [
+          { name: 'Voltage', address: 30001, dataType: 'float', byteOrder: 'CDAB', unit: 'V' },
+          { name: 'Frequency', address: 30003, dataType: 'uint16', scalingFactor: 0.01 }
+        ]
+      }
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(context.send).toHaveBeenCalledWith('client_apply_point_table', {
+      registerMapping: {
+        coils: {},
+        discrete_inputs: {},
+        holding_registers: {},
+        input_registers: {
+          0: { comment: 'Voltage [V]', dataType: 'float' },
+          2: { comment: 'Frequency', dataType: 'uint16', scalingFactor: 0.01 }
+        }
+      },
+      window: { type: 'input_registers', address: 0, length: 3 },
+      byteOrder: 'CDAB',
+      unitId: 1
+    })
+    expect(jsonOf(result)).toMatchObject({
+      applied: true,
+      byteOrder: 'CDAB',
+      unitId: 1,
+      report: { accepted: 2, rejected: 0 }
+    })
+    await client.close()
+  })
+})
+
 describe('the switches', () => {
   it('leaves nothing listening while MCP is off', async () => {
     const port = await freePort()
