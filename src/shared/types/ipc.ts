@@ -28,7 +28,9 @@ import type {
   PrivilegedPortFixMode,
   PrivilegedPortFixResult,
   SerialGroupStatus,
-  SerialGroupFixResult
+  SerialGroupFixResult,
+  RendererCommandRequest,
+  RendererCommandReply
 } from '@shared'
 // `import type`, because shared is the one module all three processes compile
 // against and notistack is a renderer dependency. `variant` below is the only
@@ -397,11 +399,12 @@ export const EVENTS_TO_RENDERER = [
   'register_value',
   'window_update',
   'address_groups',
-  'rtu_server_status'
+  'rtu_server_status',
+  'renderer_command'
 ] as const
 
 /** The events a window pushes to main. `sendEvent` there, `onIpcEvent` here. */
-export const EVENTS_TO_MAIN = ['open_server_window'] as const
+export const EVENTS_TO_MAIN = ['open_server_window', 'renderer_command_result'] as const
 
 export type EventToRenderer = (typeof EVENTS_TO_RENDERER)[number]
 export type EventToMain = (typeof EVENTS_TO_MAIN)[number]
@@ -418,6 +421,10 @@ export interface IpcEventPayloadMap {
   ['open_server_window']: []
   ['address_groups']: [AddressGroup[]]
   ['rtu_server_status']: [boolean]
+  /** A command for the main window's stores, see `RendererCommandMap`. */
+  ['renderer_command']: [RendererCommandRequest]
+  /** The main window's answer to one `renderer_command`, matched on its `id`. */
+  ['renderer_command_result']: [RendererCommandReply]
 }
 
 export interface BackendMessage {

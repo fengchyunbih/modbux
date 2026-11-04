@@ -15,6 +15,8 @@ import { theme } from './theme'
 import { closeSnackbar, SnackbarProvider, MaterialDesignContent } from 'notistack'
 import Close from '@mui/icons-material/Close'
 import App from './App'
+// Installs the listener for the commands main sends the main window.
+import './commands'
 
 const AUTO_HIDE_MS = 3000
 

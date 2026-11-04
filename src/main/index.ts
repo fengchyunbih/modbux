@@ -8,6 +8,7 @@ import { ModbusClient } from './modules/modbusClient'
 import os from 'os'
 import { ModbusServer } from './modules/modbusServer'
 import { Windows } from './windows'
+import { RendererCommands } from './modules/rendererCommands'
 
 if (is.dev && os.platform() === 'darwin') {
   app.disableHardwareAcceleration()
@@ -27,6 +28,13 @@ const server = new ModbusServer({ windows })
 
 // IPC
 initIpc(app, appState, client, server, windows)
+
+// Commands main sends to the main window's stores. Nothing in main sends one
+// yet; the MCP server is what will.
+const rendererCommands = new RendererCommands({ windows })
+onIpcEvent('renderer_command_result', (event, reply) =>
+  rendererCommands.receive(event.sender, reply)
+)
 
 /**
  * Say which path took the app down.
@@ -108,6 +116,7 @@ function createWindow(): BrowserWindow {
    */
   mainWindow.on('closed', () => {
     windows.main = null
+    rendererCommands.abandonAll()
   })
 
   // HMR for renderer base on electron-vite cli.

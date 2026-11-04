@@ -67,9 +67,11 @@ export const fireEvent = (event: string, ...args: unknown[]): void => {
  */
 export interface StubOptions {
   isServerWindow?: boolean
+  /** Hears every event the renderer sends main, which `sendEvent` puts out. */
+  onSend?: (event: string, ...args: unknown[]) => void
 }
 
-export const stubRenderer = ({ isServerWindow = false }: StubOptions = {}): void => {
+export const stubRenderer = ({ isServerWindow = false, onSend }: StubOptions = {}): void => {
   listeners.clear()
   const w = window as unknown as { electron: unknown; api: unknown }
   w.electron = {
@@ -82,7 +84,7 @@ export const stubRenderer = ({ isServerWindow = false }: StubOptions = {}): void
         listeners.set(event, forEvent)
         return (): void => {}
       },
-      send: (): void => {},
+      send: (event: string, ...args: unknown[]): void => onSend?.(event, ...args),
       invoke: async (): Promise<undefined> => undefined
     }
   }
