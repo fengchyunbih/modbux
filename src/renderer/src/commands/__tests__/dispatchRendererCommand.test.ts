@@ -15,6 +15,8 @@ const config: ClientConfigSnapshot = {
   readConfiguration: false
 }
 
+const serverValues = { uuid: 'a', port: '502', byteOrder: 'ABCD' as const, units: {} }
+
 const handlersAnswering = (): RendererCommandHandlers => ({
   client_get_config: vi.fn(() => config),
   server_list: vi.fn(async () => ({ selectedUuid: 'a', servers: [] })),
@@ -27,7 +29,20 @@ const handlersAnswering = (): RendererCommandHandlers => ({
   server_export_config: vi.fn(() => ({ json: '{}' })),
   server_import_config: vi.fn(async () => ({ ok: false as const, error: 'stub' })),
   project_export: vi.fn(() => ({ json: '{}' })),
-  project_import: vi.fn(async () => ({ ok: false as const, error: 'stub' }))
+  project_import: vi.fn(async () => ({ ok: false as const, error: 'stub' })),
+  // Point table commands
+  client_set_connection: vi.fn(async () => ({
+    outcome: 'done' as const,
+    connectionConfig: defaultConnectionConfig
+  })),
+  client_apply_point_table: vi.fn(async () => ({
+    outcome: 'done' as const,
+    registerConfig: defaultRegisterConfig,
+    unitId: 0
+  })),
+  server_apply_point_table: vi.fn(async () => serverValues),
+  server_get_values: vi.fn(async () => serverValues),
+  server_set_values: vi.fn(async () => ({ results: [] }))
 })
 
 describe('dispatchRendererCommand', () => {

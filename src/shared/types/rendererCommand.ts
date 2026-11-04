@@ -1,7 +1,10 @@
 import z, { ZodType, ZodTypeDef } from 'zod'
 import { ConnectionConfigSchema, RegisterConfigSchema, RegisterMappingSchema } from './client'
-import { PortSchema } from './ranges'
 import { UnitIdStringSchema } from './unitid'
+import { ByteOrderSchema } from './byteOrder'
+import { PortSchema, RegisterAddressSchema, UnitIdSchema } from './ranges'
+import { RegisterTypeSchema } from './register'
+import { ServerRegistersPerUnitSchema, ServerUuidSchema } from './server'
 
 //
 //
@@ -138,6 +141,98 @@ export const ServerDeleteResultSchema = z.discriminatedUnion('ok', [
 ])
 export type ServerDeleteResult = z.infer<typeof ServerDeleteResultSchema>
 
+// Point table commands: the client's connection and mapping, and a server's
+// registers, written as one undo step each (docs/design/json-config-and-mcp.md,
+// steps 7 and 8).
+
+/**
+ * What a configuration write did, by what `writeClientConfiguration` answered:
+ * `refused-connected` is a connection field that differs while a connection
+ * stands, `refused` one main did not take, with everything put back.
+ */
+export const ClientWriteOutcomeSchema = z.enum(['done', 'refused', 'refused-connected'])
+export type ClientWriteOutcome = z.infer<typeof ClientWriteOutcomeSchema>
+
+/** What `client_set_connection` takes: the fields to change, the rest kept. */
+export const ClientSetConnectionPayloadSchema = ConnectionConfigSchema.deepPartial()
+export type ClientSetConnectionPayload = z.infer<typeof ClientSetConnectionPayloadSchema>
+
+export const ClientSetConnectionResultSchema = z.object({
+  outcome: ClientWriteOutcomeSchema,
+  connectionConfig: ConnectionConfigSchema
+})
+export type ClientSetConnectionResult = z.infer<typeof ClientSetConnectionResultSchema>
+
+/**
+ * What `client_apply_point_table` takes: the mapping that replaces the one the
+ * client holds, the read window over it, and the byte order and unit id the
+ * table names, where it names them.
+ */
+export const ClientApplyPointTablePayloadSchema = z.object({
+  registerMapping: RegisterMappingSchema,
+  window: z.object({
+    type: RegisterTypeSchema,
+    address: RegisterAddressSchema,
+    length: z.number().int().min(1).max(65535)
+  }),
+  byteOrder: ByteOrderSchema.optional(),
+  unitId: UnitIdSchema.optional()
+})
+export type ClientApplyPointTablePayload = z.infer<typeof ClientApplyPointTablePayloadSchema>
+
+export const ClientApplyPointTableResultSchema = z.object({
+  outcome: ClientWriteOutcomeSchema,
+  registerConfig: RegisterConfigSchema,
+  unitId: UnitIdSchema
+})
+export type ClientApplyPointTableResult = z.infer<typeof ClientApplyPointTableResultSchema>
+
+/**
+ * What `server_apply_point_table` takes: the units whose registers the table
+ * replaces, and the byte order it names. A unit the table does not name keeps
+ * what it holds.
+ */
+export const ServerApplyPointTablePayloadSchema = z.object({
+  uuid: ServerUuidSchema,
+  units: ServerRegistersPerUnitSchema,
+  byteOrder: ByteOrderSchema.optional()
+})
+export type ServerApplyPointTablePayload = z.infer<typeof ServerApplyPointTablePayloadSchema>
+
+/** A server's registers as the store holds them, with its byte order. */
+export const ServerValuesSchema = z.object({
+  uuid: ServerUuidSchema,
+  port: z.string(),
+  byteOrder: ByteOrderSchema,
+  units: ServerRegistersPerUnitSchema
+})
+export type ServerValues = z.infer<typeof ServerValuesSchema>
+
+/** One value `server_set_values` writes: a raw number, a bit, or a utf8 string. */
+export const ServerValueWriteSchema = z.object({
+  unitId: UnitIdStringSchema,
+  registerType: RegisterTypeSchema,
+  address: RegisterAddressSchema,
+  value: z.union([z.number(), z.boolean(), z.string()])
+})
+export type ServerValueWrite = z.infer<typeof ServerValueWriteSchema>
+
+export const ServerSetValuesPayloadSchema = z.object({
+  uuid: ServerUuidSchema,
+  values: z.array(ServerValueWriteSchema)
+})
+export type ServerSetValuesPayload = z.infer<typeof ServerSetValuesPayloadSchema>
+
+/**
+ * What became of each value, in the order given: `set`, `no_register` where
+ * the unit holds nothing at that address, `generator` where a generator drives
+ * it, or `refused` where main did not take the register.
+ */
+export const ServerSetValuesResultSchema = z.object({
+  results: z.array(z.enum(['set', 'no_register', 'generator', 'refused']))
+})
+export type ServerSetValuesResult = z.infer<typeof ServerSetValuesResultSchema>
+
 /**
  * Every command, with what it takes and what it answers.
  *
@@ -159,6 +254,18 @@ export interface RendererCommandMap {
   ['server_import_config']: { payload: ServerImportRequest; result: ServerImportResult }
   ['project_export']: { payload: undefined; result: ConfigJson }
   ['project_import']: { payload: ConfigJson; result: ProjectImportResult }
+  // Point table commands
+  ['client_set_connection']: {
+    payload: ClientSetConnectionPayload
+    result: ClientSetConnectionResult
+  }
+  ['client_apply_point_table']: {
+    payload: ClientApplyPointTablePayload
+    result: ClientApplyPointTableResult
+  }
+  ['server_apply_point_table']: { payload: ServerApplyPointTablePayload; result: ServerValues }
+  ['server_get_values']: { payload: { uuid: string }; result: ServerValues }
+  ['server_set_values']: { payload: ServerSetValuesPayload; result: ServerSetValuesResult }
 }
 
 export type RendererCommandName = keyof RendererCommandMap
@@ -198,7 +305,22 @@ export const RENDERER_COMMAND_SCHEMAS: {
   server_export_config: { payload: ServerUuidRequestSchema, result: ConfigJsonSchema },
   server_import_config: { payload: ServerImportRequestSchema, result: ServerImportResultSchema },
   project_export: { payload: z.undefined(), result: ConfigJsonSchema },
-  project_import: { payload: ConfigJsonSchema, result: ProjectImportResultSchema }
+  project_import: { payload: ConfigJsonSchema, result: ProjectImportResultSchema },
+  // Point table commands
+  client_set_connection: {
+    payload: ClientSetConnectionPayloadSchema,
+    result: ClientSetConnectionResultSchema
+  },
+  client_apply_point_table: {
+    payload: ClientApplyPointTablePayloadSchema,
+    result: ClientApplyPointTableResultSchema
+  },
+  server_apply_point_table: {
+    payload: ServerApplyPointTablePayloadSchema,
+    result: ServerValuesSchema
+  },
+  server_get_values: { payload: z.object({ uuid: ServerUuidSchema }), result: ServerValuesSchema },
+  server_set_values: { payload: ServerSetValuesPayloadSchema, result: ServerSetValuesResultSchema }
 }
 
 /** Whether `name` is a command, which a request off the wire has to be asked. */

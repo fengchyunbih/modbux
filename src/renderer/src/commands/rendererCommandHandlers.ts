@@ -4,6 +4,7 @@ import { ClientConfigSnapshot, ServerList } from '@shared'
 import { connectClient, disconnectClient } from '@renderer/context/clientConnection'
 import { createConfigFileCommandHandlers } from './configFileCommandHandlers'
 import { RendererCommandHandlers } from './dispatchRendererCommand'
+import { createPointTableHandlers } from './pointTableHandlers'
 
 interface HandlerContext {
   /**
@@ -16,6 +17,8 @@ interface HandlerContext {
   serverViewSplitOut: () => boolean
 }
 
+const SPLIT_OUT = 'The server view is in its own window; close it to use server commands'
+
 /**
  * The commands the main window answers, each one read from or run by the store
  * that owns what it is about.
@@ -23,6 +26,10 @@ interface HandlerContext {
 export const createRendererCommandHandlers = ({
   serverViewSplitOut
 }: HandlerContext): RendererCommandHandlers => ({
+  ...createPointTableHandlers(() => {
+    if (serverViewSplitOut()) throw new Error(SPLIT_OUT)
+  }),
+
   client_get_config: (): ClientConfigSnapshot => {
     const { name, connectionConfig, registerConfig, registerMapping, readConfiguration } =
       useClientZustand.getState()
@@ -35,9 +42,7 @@ export const createRendererCommandHandlers = ({
   ...createConfigFileCommandHandlers({ serverViewSplitOut }),
 
   server_list: (): ServerList => {
-    if (serverViewSplitOut()) {
-      throw new Error('The server view is in its own window; close it to use server commands')
-    }
+    if (serverViewSplitOut()) throw new Error(SPLIT_OUT)
     const { servers, selectedUuid } = useServerZustand.getState()
     return {
       selectedUuid,

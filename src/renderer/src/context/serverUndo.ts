@@ -192,10 +192,23 @@ const asOneStep = async (
   }
 }
 
-/** Clear and Open replace what a server holds: one step for the whole record. */
-export const asOneServerStep = (uuid: string, action: () => Promise<void>): Promise<void> => {
+/**
+ * Clear and Open replace what a server holds: one step for the whole record.
+ *
+ * The step is recorded when what the server is changed, which leaves out the
+ * values in its registers, or when `wroteValues` says the action wrote one: an
+ * MCP point table that sets a coil is a change the user asked for, where a
+ * master's write is not. The step holds the record whole, values included, so
+ * its replay puts those back too.
+ */
+export const asOneServerStep = (
+  uuid: string,
+  action: () => Promise<void>,
+  wroteValues: () => boolean = () => false
+): Promise<void> => {
   const before = useServerZustand.getState().servers[uuid]
   return asOneStep(action, () =>
+    !wroteValues() &&
     deepEqual(serverStructure(before), serverStructure(useServerZustand.getState().servers[uuid]))
       ? undefined
       : { kind: 'server', uuid, value: before }

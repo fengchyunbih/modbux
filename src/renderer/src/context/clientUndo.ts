@@ -149,18 +149,19 @@ const writeFieldFrom = async <Field extends ClientField>(
 }
 
 /**
- * Makes the client hold `target`, as a whole or not at all.
+ * Makes the client hold the connection and register config of `target`, and
+ * then whatever `andThen` writes, as a whole or not at all.
  *
  * Each field that differs goes through its own setter, so it passes the same
  * guards and reaches main the same way an edit does. A connection field that
  * differs while a connection stands is refused before anything is written,
  * because its setter would refuse it after the others had gone in. When main
- * refuses a field or the mapping, the fields already written are put back, so
- * a refusal leaves the client as it was. It still costs read configuration,
- * which `replaceRegisterMapping` turns off before it asks.
+ * refuses a field, or `andThen` answers false, the fields already written are
+ * put back, so a refusal leaves the client as it was.
  */
-export const writeClientConfiguration = async (
-  target: ClientConfiguration
+const writeClientFields = async (
+  target: Pick<ClientConfiguration, 'connectionConfig' | 'registerConfig'>,
+  andThen: () => Promise<boolean> = async () => true
 ): Promise<'done' | 'refused' | 'refused-connected'> => {
   const before = useClientZustand.getState()
   const targetState: ClientZustand = {
@@ -185,13 +186,36 @@ export const writeClientConfiguration = async (
     written.push(field)
     if (!(await writeFieldFrom(field, targetState))) return putBack()
   }
-  if (!(await useClientZustand.getState().replaceRegisterMapping(target.registerMapping))) {
-    return putBack()
-  }
+  if (!(await andThen())) return putBack()
+  return 'done'
+}
+
+/**
+ * Makes the client hold `target`, as a whole or not at all.
+ *
+ * `writeClientFields` with the mapping as the last write. A refusal still
+ * costs read configuration, which `replaceRegisterMapping` turns off before it
+ * asks.
+ */
+export const writeClientConfiguration = async (
+  target: ClientConfiguration
+): Promise<'done' | 'refused' | 'refused-connected'> => {
+  const outcome = await writeClientFields(target, () =>
+    useClientZustand.getState().replaceRegisterMapping(target.registerMapping)
+  )
+  if (outcome !== 'done') return outcome
   useClientZustand.getState().setName(target.name)
   showMapping()
   return 'done'
 }
+
+/**
+ * Makes the client hold `target`'s connection and register config, keeping
+ * its mapping and read configuration. What `client_set_connection` writes.
+ */
+export const writeClientSettings = (
+  target: Pick<ClientConfiguration, 'connectionConfig' | 'registerConfig'>
+): Promise<'done' | 'refused' | 'refused-connected'> => writeClientFields(target)
 
 /** Puts back what Load or Clear Config replaced, as a whole or not at all. */
 const replayConfiguration = async (
