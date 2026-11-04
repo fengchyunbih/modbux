@@ -39,6 +39,33 @@ export const ServerListSchema = z.object({
 export type ServerList = z.infer<typeof ServerListSchema>
 
 /**
+ * What `client_connect` did with the request, by what the Connect button would
+ * have done with a press.
+ *
+ * - `requested`: main was asked to connect and has answered; main's client
+ *   state says whether it connected.
+ * - `not_disconnected`: the client is connected, connecting or disconnecting,
+ *   so there was nothing to press.
+ * - `no_address`: the host field (TCP) or COM port field (RTU) names nothing,
+ *   which is the state the button is greyed in.
+ * - `serial_access_blocked`: on Linux, this user may not open serial ports; the
+ *   window shows the dialog that fixes it.
+ */
+export const ClientConnectOutcomeSchema = z.object({
+  outcome: z.enum(['requested', 'not_disconnected', 'no_address', 'serial_access_blocked'])
+})
+export type ClientConnectOutcome = z.infer<typeof ClientConnectOutcomeSchema>
+
+/**
+ * What `client_disconnect` did: `requested` once main has answered, or
+ * `not_connected` where the client is disconnected or already disconnecting.
+ */
+export const ClientDisconnectOutcomeSchema = z.object({
+  outcome: z.enum(['requested', 'not_connected'])
+})
+export type ClientDisconnectOutcome = z.infer<typeof ClientDisconnectOutcomeSchema>
+
+/**
  * Every command, with what it takes and what it answers.
  *
  * The keys are the command names. A command that takes nothing declares
@@ -48,6 +75,8 @@ export type ServerList = z.infer<typeof ServerListSchema>
 export interface RendererCommandMap {
   ['client_get_config']: { payload: undefined; result: ClientConfigSnapshot }
   ['server_list']: { payload: undefined; result: ServerList }
+  ['client_connect']: { payload: undefined; result: ClientConnectOutcome }
+  ['client_disconnect']: { payload: undefined; result: ClientDisconnectOutcome }
 }
 
 export type RendererCommandName = keyof RendererCommandMap
@@ -76,7 +105,9 @@ export const RENDERER_COMMAND_SCHEMAS: {
   }
 } = {
   client_get_config: { payload: z.undefined(), result: ClientConfigSnapshotSchema },
-  server_list: { payload: z.undefined(), result: ServerListSchema }
+  server_list: { payload: z.undefined(), result: ServerListSchema },
+  client_connect: { payload: z.undefined(), result: ClientConnectOutcomeSchema },
+  client_disconnect: { payload: z.undefined(), result: ClientDisconnectOutcomeSchema }
 }
 
 /** Whether `name` is a command, which a request off the wire has to be asked. */

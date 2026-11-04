@@ -115,6 +115,20 @@ describe('a command from main to the main window and back', () => {
     expect((await commands.send('server_list')).servers.length).toBeGreaterThan(0)
   })
 
+  it("runs client_connect and client_disconnect through the Connect button's functions", async () => {
+    const commands = await wireUp()
+    const { useDataZustand } = await import('@renderer/context/data.zustand')
+
+    expect(await commands.send('client_connect')).toEqual({ outcome: 'requested' })
+    expect(await commands.send('client_disconnect')).toEqual({ outcome: 'not_connected' })
+
+    useDataZustand.setState((state) => {
+      state.clientState.connectState = 'connected'
+    })
+    expect(await commands.send('client_connect')).toEqual({ outcome: 'not_disconnected' })
+    expect(await commands.send('client_disconnect')).toEqual({ outcome: 'requested' })
+  })
+
   it('answers client_get_config while the server view is split out', async () => {
     const commands = await wireUp()
 

@@ -17,7 +17,9 @@ const config: ClientConfigSnapshot = {
 
 const handlersAnswering = (): RendererCommandHandlers => ({
   client_get_config: vi.fn(() => config),
-  server_list: vi.fn(async () => ({ selectedUuid: 'a', servers: [] }))
+  server_list: vi.fn(async () => ({ selectedUuid: 'a', servers: [] })),
+  client_connect: vi.fn(async () => ({ outcome: 'requested' as const })),
+  client_disconnect: vi.fn(async () => ({ outcome: 'requested' as const }))
 })
 
 describe('dispatchRendererCommand', () => {

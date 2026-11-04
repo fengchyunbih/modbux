@@ -9,7 +9,6 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import RtuConfig from './RtuConfig'
 import SerialGroupModal from '@renderer/components/client/SerialGroupModal/SerialGroupModal'
-import { useSerialGroupZustand } from '@renderer/components/client/SerialGroupModal/serialGroupModal.zustand'
 import TcpConfig from './TcpConfig'
 import { useClientZustand } from '@renderer/context/client.zustand'
 import { Protocol } from '@shared'
@@ -18,6 +17,7 @@ import { maskInputProps } from '@renderer/components/shared/inputs/types'
 import UnitIdInput from '@renderer/components/shared/inputs/UnitIdInput'
 import { useDataZustand } from '@renderer/context/data.zustand'
 import { meme } from '@renderer/components/shared/inputs/meme'
+import { connectClient, disconnectClient } from '@renderer/context/clientConnection'
 
 // Protocol
 const ProtocolSelect = meme(({ protocol }: { protocol: Protocol }) => {
@@ -100,22 +100,10 @@ const ConnectButton = meme(() => {
   const action = useCallback(async (): Promise<void> => {
     const currentConnectedState = useDataZustand.getState().clientState.connectState
     if (['connecting', 'connected'].includes(currentConnectedState)) {
-      window.api.disconnect()
-      if (!useClientZustand.getState().readConfiguration) {
-        useDataZustand.getState().setRegisterData([])
-      }
+      await disconnectClient()
       return
     }
-
-    if (currentConnectedState === 'disconnected') {
-      // On RTU the port can be there and still refuse to open. Ask first and
-      // say why, rather than let the connect fail on a permission error.
-      if (useClientZustand.getState().connectionConfig.protocol === 'ModbusRtu') {
-        const blocked = await useSerialGroupZustand.getState().check({ force: true })
-        if (blocked) return
-      }
-      window.api.connect()
-    }
+    if (currentConnectedState === 'disconnected') await connectClient()
   }, [])
 
   // Only the press that connects. Disconnect and the cancel a connecting state
