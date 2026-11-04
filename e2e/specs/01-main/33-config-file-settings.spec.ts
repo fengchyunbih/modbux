@@ -164,6 +164,13 @@ test.describe.serial('Server config file with a port', () => {
   test('a v2 file opens its registers and leaves the port', async ({ mainPage }) => {
     await typeServerPort(mainPage, '5023')
 
+  // `resetApp` clears the server it finds on 502, so the next spec starts on a
+  // server it cannot find while this one is left on 5023.
+  test('put the server back on 502', async ({ mainPage }) => {
+    await typeServerPort(mainPage, '502')
+    await expect(mainPage.getByTestId('select-server-502')).toBeVisible()
+  })
+
     await mainPage.getByTestId('server-open-file-input').setInputFiles(SERVER_V2)
 
     await expect(field(mainPage, 'server-name-input')).toHaveValue('Basic Server')
