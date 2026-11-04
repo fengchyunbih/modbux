@@ -86,6 +86,14 @@ test.describe.serial('MCP settings', () => {
     )
   })
 
+  test('the settings page shows the stdio shim commands', async ({ mainPage }) => {
+    await expect(mainPage.getByTestId('mcp-stdio-claude-command')).toContainText(
+      'claude mcp add modbux'
+    )
+    await expect(mainPage.getByTestId('mcp-stdio-claude-command')).toContainText('mcpStdio.js')
+    await expect(mainPage.getByTestId('mcp-stdio-command')).toContainText('mcpStdio.js')
+  })
+
   test('a request without the token is refused', async () => {
     expect((await initialize()).status).toBe(401)
   })
