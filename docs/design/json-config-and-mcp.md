@@ -120,7 +120,7 @@ Prompts：`point_table_to_client`、`point_table_to_simulator`、閉環測試。
 
 ## 已決定
 
-1. **只留在 fork，不回饋 upstream。** CONTRIBUTING 要求新依賴先在 upstream 討論，這條在 fork 不適用。步驟 7 新增 `@modelcontextprotocol/sdk`，版本固定為 `1.32.1`，放在 `dependencies`，因為 main 在執行時載入它，而 electron-builder 只打包 `dependencies`。產生 JSON Schema 用 `zod-to-json-schema`，不升級 zod v4：SDK 1.32.1 自己依賴 `zod-to-json-schema@^3.25.1`（`yarn.lock` 解析為 `3.25.2`），用它把 tool 的 zod v3 輸入 schema 轉成 JSON Schema，repo 的 zod 是 `3.25.76`，在 SDK 接受的 `^3.25 || ^4.0` 內。步驟 7 的前半沒有 JSON Schema resource，main 不直接引用它；加入設定檔 JSON Schema resource 時，把 `zod-to-json-schema` 以 SDK 範圍內的確切版本加進 `dependencies`。
+1. **只留在 fork，不回饋 upstream。** CONTRIBUTING 要求新依賴先在 upstream 討論，這條在 fork 不適用。步驟 7 新增 `@modelcontextprotocol/sdk`，版本固定為 `1.32.1`，放在 `dependencies`，因為 main 在執行時載入它，而 electron-builder 只打包 `dependencies`。產生 JSON Schema 用 `zod-to-json-schema`，不升級 zod v4：SDK 1.32.1 自己依賴 `zod-to-json-schema@^3.25.1`（`yarn.lock` 解析為 `3.25.2`），用它把 tool 的 zod v3 輸入 schema 轉成 JSON Schema，repo 的 zod 是 `3.25.76`，在 SDK 接受的 `^3.25 || ^4.0` 內。設定檔 JSON Schema resource（步驟 8）直接用 `zod-to-json-schema`，因此以確切版本 `3.25.2`（在 SDK 範圍 `^3.25.1` 內，與 `yarn.lock` 解析的同一版）加進 `dependencies`；`src/main/modules/mcp/jsonSchemas.ts` 由 Client 檔、Server 檔與 project 檔的 Zod schema 產生 draft-07 JSON Schema，`$refStrategy: 'none'` 讓每份 resource 自成一份文件。
 2. **Byte swap 要做，逐點 byte order 不做。** 步驟 2 預留欄位，步驟 6 實作，排在 MCP 之前；只套用在 32 與 64 位元類型。見「Byte swap」。
 3. **做 project 檔。** 排在步驟 3。
 4. **MCP 運作時 main window 必須開著。**

@@ -21,12 +21,13 @@ import { asOneServerStep } from './serverUndo'
  */
 
 /**
- * The server config file for the selected server, as the text Save writes, or
- * undefined when the selection names no server.
+ * The server config file for server `uuid` (the selected one by default), as
+ * the text Save writes, or undefined when no server has that uuid.
  */
-export const exportServerConfig = (): string | undefined => {
-  const { servers, selectedUuid } = useServerZustand.getState()
-  const server = servers[selectedUuid]
+export const exportServerConfig = (
+  uuid: string = useServerZustand.getState().selectedUuid
+): string | undefined => {
+  const server = useServerZustand.getState().servers[uuid]
   if (!server) return undefined
   return serializeServerConfig({
     // The layout store reads the version once at startup.
@@ -105,18 +106,21 @@ export const writeServerConfig = async (
 }
 
 /**
- * Reads a server config file into the selected server, as one step to undo.
+ * Reads a server config file into server `uuid` (the selected one by default),
+ * as one step to undo. The server ends up selected, as after Open.
  *
  * A file that does not parse changes nothing, and the parse comes before the
  * reset because the reset reaches main and then clears the store. A file
  * migrated from v3 carries no port, and the server keeps the port it has.
  */
-export const importServerConfig = async (json: string): Promise<ServerConfigImport> => {
+export const importServerConfig = async (
+  json: string,
+  uuid: string = useServerZustand.getState().selectedUuid
+): Promise<ServerConfigImport> => {
   const parsed = parseServerConfig(json)
   if (!parsed.ok) return parsed
   const { config } = parsed
 
-  const uuid = useServerZustand.getState().selectedUuid
   let write: ServerConfigWrite = {}
   await asOneServerStep(uuid, async () => {
     write = await writeServerConfig(uuid, config)

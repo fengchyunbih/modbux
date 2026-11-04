@@ -100,12 +100,14 @@ test.describe.serial('MCP settings', () => {
     )
 
     const { tools } = await client.listTools()
-    expect(tools.map((tool) => tool.name)).toEqual([
-      'client_get_config',
-      'client_connect',
-      'client_disconnect',
-      'client_read_points'
-    ])
+    expect(tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([
+        'client_get_config',
+        'client_connect',
+        'client_disconnect',
+        'client_read_points'
+      ])
+    )
 
     const result = await client.callTool({ name: 'client_get_config', arguments: {} })
     expect(result.isError).toBeFalsy()

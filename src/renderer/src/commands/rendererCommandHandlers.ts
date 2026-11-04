@@ -2,6 +2,7 @@ import { useClientZustand } from '@renderer/context/client.zustand'
 import { useServerZustand } from '@renderer/context/server.zustand'
 import { ClientConfigSnapshot, ServerList } from '@shared'
 import { connectClient, disconnectClient } from '@renderer/context/clientConnection'
+import { createConfigFileCommandHandlers } from './configFileCommandHandlers'
 import { RendererCommandHandlers } from './dispatchRendererCommand'
 
 interface HandlerContext {
@@ -30,6 +31,8 @@ export const createRendererCommandHandlers = ({
 
   client_connect: connectClient,
   client_disconnect: disconnectClient,
+
+  ...createConfigFileCommandHandlers({ serverViewSplitOut }),
 
   server_list: (): ServerList => {
     if (serverViewSplitOut()) {

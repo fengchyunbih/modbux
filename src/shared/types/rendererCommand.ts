@@ -1,5 +1,6 @@
 import z, { ZodType, ZodTypeDef } from 'zod'
 import { ConnectionConfigSchema, RegisterConfigSchema, RegisterMappingSchema } from './client'
+import { PortSchema } from './ranges'
 import { UnitIdStringSchema } from './unitid'
 
 //
@@ -65,6 +66,78 @@ export const ClientDisconnectOutcomeSchema = z.object({
 })
 export type ClientDisconnectOutcome = z.infer<typeof ClientDisconnectOutcomeSchema>
 
+//
+//
+// Config files and servers
+
+/** A config file as text, which is what Save writes and Open reads. */
+export const ConfigJsonSchema = z.object({ json: z.string() })
+export type ConfigJson = z.infer<typeof ConfigJsonSchema>
+
+/** What a config file import reports besides the result. */
+const ImportNotesShape = {
+  migrated: z.boolean(),
+  fromVersion: z.number(),
+  wasMixedEndianness: z.boolean().optional(),
+  futureVersion: z
+    .object({ fields: z.array(z.string()), savedByNewerVersion: z.boolean() })
+    .optional()
+}
+
+const ImportFailureSchema = z.object({ ok: z.literal(false), error: z.string() })
+
+/** What `client_import_config` answers: the notes, or why the file was refused. */
+export const ClientImportResultSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), ...ImportNotesShape }),
+  ImportFailureSchema
+])
+export type ClientImportResult = z.infer<typeof ClientImportResultSchema>
+
+/** What `server_import_config` answers. `portRefused` is the port the file asked for and did not get. */
+export const ServerImportResultSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), ...ImportNotesShape, portRefused: z.number().optional() }),
+  ImportFailureSchema
+])
+export type ServerImportResult = z.infer<typeof ServerImportResultSchema>
+
+/** What `project_import` answers. */
+export const ProjectImportResultSchema = z.discriminatedUnion('ok', [
+  z.object({
+    ok: z.literal(true),
+    ...ImportNotesShape,
+    portsRefused: z.array(z.number()),
+    serversRefused: z.number()
+  }),
+  ImportFailureSchema
+])
+export type ProjectImportResult = z.infer<typeof ProjectImportResultSchema>
+
+export const ServerCreateRequestSchema = z.object({
+  name: z.string().optional(),
+  port: PortSchema.optional()
+})
+export type ServerCreateRequest = z.infer<typeof ServerCreateRequestSchema>
+
+/** What `server_create` answers: the server made, or why none was. */
+export const ServerCreateResultSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), server: ServerSummarySchema }),
+  ImportFailureSchema
+])
+export type ServerCreateResult = z.infer<typeof ServerCreateResultSchema>
+
+export const ServerUuidRequestSchema = z.object({ uuid: z.string() })
+export type ServerUuidRequest = z.infer<typeof ServerUuidRequestSchema>
+
+export const ServerImportRequestSchema = z.object({ uuid: z.string(), json: z.string() })
+export type ServerImportRequest = z.infer<typeof ServerImportRequestSchema>
+
+/** What `server_delete` answers. */
+export const ServerDeleteResultSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }),
+  ImportFailureSchema
+])
+export type ServerDeleteResult = z.infer<typeof ServerDeleteResultSchema>
+
 /**
  * Every command, with what it takes and what it answers.
  *
@@ -77,6 +150,15 @@ export interface RendererCommandMap {
   ['server_list']: { payload: undefined; result: ServerList }
   ['client_connect']: { payload: undefined; result: ClientConnectOutcome }
   ['client_disconnect']: { payload: undefined; result: ClientDisconnectOutcome }
+  // Config files and servers
+  ['client_export_config']: { payload: undefined; result: ConfigJson }
+  ['client_import_config']: { payload: ConfigJson; result: ClientImportResult }
+  ['server_create']: { payload: ServerCreateRequest; result: ServerCreateResult }
+  ['server_delete']: { payload: ServerUuidRequest; result: ServerDeleteResult }
+  ['server_export_config']: { payload: ServerUuidRequest; result: ConfigJson }
+  ['server_import_config']: { payload: ServerImportRequest; result: ServerImportResult }
+  ['project_export']: { payload: undefined; result: ConfigJson }
+  ['project_import']: { payload: ConfigJson; result: ProjectImportResult }
 }
 
 export type RendererCommandName = keyof RendererCommandMap
@@ -107,7 +189,16 @@ export const RENDERER_COMMAND_SCHEMAS: {
   client_get_config: { payload: z.undefined(), result: ClientConfigSnapshotSchema },
   server_list: { payload: z.undefined(), result: ServerListSchema },
   client_connect: { payload: z.undefined(), result: ClientConnectOutcomeSchema },
-  client_disconnect: { payload: z.undefined(), result: ClientDisconnectOutcomeSchema }
+  client_disconnect: { payload: z.undefined(), result: ClientDisconnectOutcomeSchema },
+  // Config files and servers
+  client_export_config: { payload: z.undefined(), result: ConfigJsonSchema },
+  client_import_config: { payload: ConfigJsonSchema, result: ClientImportResultSchema },
+  server_create: { payload: ServerCreateRequestSchema, result: ServerCreateResultSchema },
+  server_delete: { payload: ServerUuidRequestSchema, result: ServerDeleteResultSchema },
+  server_export_config: { payload: ServerUuidRequestSchema, result: ConfigJsonSchema },
+  server_import_config: { payload: ServerImportRequestSchema, result: ServerImportResultSchema },
+  project_export: { payload: z.undefined(), result: ConfigJsonSchema },
+  project_import: { payload: ConfigJsonSchema, result: ProjectImportResultSchema }
 }
 
 /** Whether `name` is a command, which a request off the wire has to be asked. */

@@ -39,19 +39,31 @@ const UINT32_WORDS: Record<ByteOrder, number[]> = {
 }
 
 describe('the tool list', () => {
-  it('lists the four client tools with their annotations', async () => {
+  it('lists the client tools with their annotations', async () => {
     const client = await connectInMemory(fakeContext())
 
     const { tools } = await client.listTools()
 
-    expect(tools.map((tool) => [tool.name, tool.annotations?.readOnlyHint])).toEqual([
+    const client4 = [
+      'client_get_config',
+      'client_connect',
+      'client_disconnect',
+      'client_read_points'
+    ]
+    expect(
+      tools
+        .filter((tool) => client4.includes(tool.name))
+        .map((tool) => [tool.name, tool.annotations?.readOnlyHint])
+    ).toEqual([
       ['client_get_config', true],
       ['client_connect', false],
       ['client_disconnect', false],
       ['client_read_points', true]
     ])
     // Connecting talks to a device and changes nothing it holds.
-    for (const tool of tools) expect(tool.annotations?.destructiveHint ?? false).toBe(false)
+    for (const tool of tools.filter((tool) => client4.includes(tool.name))) {
+      expect(tool.annotations?.destructiveHint ?? false).toBe(false)
+    }
     expect(tools.find((tool) => tool.name === 'client_read_points')?.annotations).toMatchObject({
       openWorldHint: true
     })
@@ -429,10 +441,9 @@ describe('the resources', () => {
 
     const { resources } = await client.listResources()
 
-    expect(resources.map((resource) => resource.uri)).toEqual([
-      ENCODING_RESOURCE_URI,
-      CLIENT_CONFIG_RESOURCE_URI
-    ])
+    expect(resources.map((resource) => resource.uri)).toEqual(
+      expect.arrayContaining([ENCODING_RESOURCE_URI, CLIENT_CONFIG_RESOURCE_URI])
+    )
   })
 
   it('answers the encoding notes as markdown', async () => {

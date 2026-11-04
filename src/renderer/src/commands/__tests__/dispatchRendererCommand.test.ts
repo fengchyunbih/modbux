@@ -19,7 +19,15 @@ const handlersAnswering = (): RendererCommandHandlers => ({
   client_get_config: vi.fn(() => config),
   server_list: vi.fn(async () => ({ selectedUuid: 'a', servers: [] })),
   client_connect: vi.fn(async () => ({ outcome: 'requested' as const })),
-  client_disconnect: vi.fn(async () => ({ outcome: 'requested' as const }))
+  client_disconnect: vi.fn(async () => ({ outcome: 'requested' as const })),
+  client_export_config: vi.fn(() => ({ json: '{}' })),
+  client_import_config: vi.fn(async () => ({ ok: false as const, error: 'stub' })),
+  server_create: vi.fn(async () => ({ ok: false as const, error: 'stub' })),
+  server_delete: vi.fn(async () => ({ ok: false as const, error: 'stub' })),
+  server_export_config: vi.fn(() => ({ json: '{}' })),
+  server_import_config: vi.fn(async () => ({ ok: false as const, error: 'stub' })),
+  project_export: vi.fn(() => ({ json: '{}' })),
+  project_import: vi.fn(async () => ({ ok: false as const, error: 'stub' }))
 })
 
 describe('dispatchRendererCommand', () => {

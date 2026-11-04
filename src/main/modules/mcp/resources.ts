@@ -1,9 +1,16 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { ListResourcesResult } from '@modelcontextprotocol/sdk/types.js'
 import { DEFAULT_UTF8_LENGTH } from '@shared'
+import { CLIENT_CONFIG_SCHEMA, PROJECT_SCHEMA, SERVER_CONFIG_SCHEMA } from './jsonSchemas'
 import { MAIN_WINDOW_CLOSED, McpToolContext } from './registry'
 
 export const ENCODING_RESOURCE_URI = 'modbux://encoding'
 export const CLIENT_CONFIG_RESOURCE_URI = 'modbux://client/config'
+export const CLIENT_CONFIG_SCHEMA_URI = 'modbux://schema/client-config'
+export const SERVER_CONFIG_SCHEMA_URI = 'modbux://schema/server-config'
+export const PROJECT_SCHEMA_URI = 'modbux://schema/project'
+export const SERVER_LIST_RESOURCE_URI = 'modbux://server/list'
+export const SERVER_CONFIG_TEMPLATE = 'modbux://server/{uuid}/config'
 
 /**
  * How Modbux reads a value out of registers, for an agent that has a point
@@ -87,7 +94,7 @@ If the value is absurd, decode the raw words of that point in the other three
 orders; the one that gives the known value is the device's.
 `
 
-/** The two resources this step ships: the encoding notes and the client config. */
+/** Every resource: the encoding notes, the live configuration and the file schemas. */
 export const registerResources = (server: McpServer, context: McpToolContext): void => {
   server.registerResource(
     'encoding',
@@ -118,6 +125,90 @@ export const registerResources = (server: McpServer, context: McpToolContext): v
           { uri: uri.href, mimeType: 'application/json', text: JSON.stringify(config, null, 2) }
         ]
       }
+    }
+  )
+  const schemas = [
+    [
+      'client-config-schema',
+      CLIENT_CONFIG_SCHEMA_URI,
+      'Client config file schema',
+      CLIENT_CONFIG_SCHEMA
+    ],
+    [
+      'server-config-schema',
+      SERVER_CONFIG_SCHEMA_URI,
+      'Server config file schema',
+      SERVER_CONFIG_SCHEMA
+    ],
+    ['project-schema', PROJECT_SCHEMA_URI, 'Project file schema', PROJECT_SCHEMA]
+  ] as const
+  for (const [name, uri, title, schema] of schemas) {
+    server.registerResource(
+      name,
+      uri,
+      {
+        title,
+        description: `JSON Schema (draft-07) of the ${title.toLowerCase().replace(' schema', '')} that the export and import tools exchange.`,
+        mimeType: 'application/schema+json'
+      },
+      (resourceUri) => ({
+        contents: [
+          {
+            uri: resourceUri.href,
+            mimeType: 'application/schema+json',
+            text: JSON.stringify(schema, null, 2)
+          }
+        ]
+      })
+    )
+  }
+
+  server.registerResource(
+    'server-list',
+    SERVER_LIST_RESOURCE_URI,
+    {
+      title: 'Server list',
+      description: 'What server_list answers, as JSON.',
+      mimeType: 'application/json'
+    },
+    async (uri) => {
+      if (!context.mainWindowOpen()) throw new Error(MAIN_WINDOW_CLOSED)
+      const list = await context.rendererCommands.send('server_list')
+      return {
+        contents: [
+          { uri: uri.href, mimeType: 'application/json', text: JSON.stringify(list, null, 2) }
+        ]
+      }
+    }
+  )
+
+  server.registerResource(
+    'server-config',
+    new ResourceTemplate(SERVER_CONFIG_TEMPLATE, {
+      list: async (): Promise<ListResourcesResult> => {
+        if (!context.mainWindowOpen()) return { resources: [] }
+        // A listing that cannot be built is an empty one: the client can
+        // still read a template it already knows.
+        const list = await context.rendererCommands.send('server_list').catch(() => undefined)
+        return {
+          resources: (list?.servers ?? []).map(({ uuid, name, port }) => ({
+            uri: `modbux://server/${uuid}/config`,
+            name: `Server ${name || port} config`,
+            mimeType: 'application/json'
+          }))
+        }
+      }
+    }),
+    {
+      title: 'Server config file',
+      description: 'What server_export_config answers for one server: the server config file.',
+      mimeType: 'application/json'
+    },
+    async (uri, variables) => {
+      if (!context.mainWindowOpen()) throw new Error(MAIN_WINDOW_CLOSED)
+      const uuid = [variables.uuid].flat()[0] ?? ''
+      const { json } = await context.rendererCommands.send('server_export_config', { uuid })
+      return { contents: [{ uri: uri.href, mimeType: 'application/json', text: json }] }
     }
   )
 }
