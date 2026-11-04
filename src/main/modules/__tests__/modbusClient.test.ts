@@ -1375,6 +1375,108 @@ describe('ModbusClient', () => {
     })
   })
 
+  // A caller in main asks a read for its values rather than listening for
+  // `register_data`, so what `read` answers has to be what the window was sent.
+  describe('what a read answers its caller', () => {
+    it('answers the rows and the groups the window was sent', async () => {
+      await connectClient()
+      appState.updateRegisterConfig({ type: 'holding_registers', address: 0, length: 2 })
+      setupHoldingRegisterReadMock([100, 200])
+
+      const outcome = await client.read()
+
+      if (!outcome.read) throw new Error(`the read was refused: ${outcome.reason}`)
+      expect(outcome.data.map((row) => row.words?.uint16)).toEqual([100, 200])
+      expect(structuredClone(outcome.data)).toEqual(getWindowCalls('register_data')[0]?.[1])
+      expect(outcome.groups).toEqual([[0, 2]])
+      expect(getWindowCalls('address_groups')[0]?.[1]).toEqual([[0, 2]])
+      expect(outcome.errors).toEqual([])
+    })
+
+    it('answers not_connected and puts nothing on the wire while disconnected', async () => {
+      expect(await client.read()).toEqual({ read: false, reason: 'not_connected' })
+      expect(mockModbusRTU.readHoldingRegisters).not.toHaveBeenCalled()
+    })
+
+    it('answers busy while a poll owns the client', async () => {
+      await connectClient()
+      setupHoldingRegisterReadMock([100])
+      client.startPolling()
+      await vi.advanceTimersByTimeAsync(0)
+      const requestsBefore = mockModbusRTU.readHoldingRegisters.mock.calls.length
+
+      expect(await client.read()).toEqual({ read: false, reason: 'busy' })
+      expect(mockModbusRTU.readHoldingRegisters.mock.calls.length).toBe(requestsBefore)
+      client.stopPolling()
+    })
+
+    // The window drops such a read by being sent nothing, so a caller that got
+    // the rows anyway would hold the old unit's values under the new unit id.
+    it('answers superseded when the unit id changes while the read is out', async () => {
+      await connectClient()
+      const gated = gateTheReads()
+
+      const pending = client.read()
+      await vi.advanceTimersByTimeAsync(0)
+      appState.updateConnectionConfig({ unitId: 7 })
+      gated.resolveAll()
+
+      expect(await pending).toEqual({ read: false, reason: 'superseded' })
+      expect(getWindowCalls('register_data')).toEqual([])
+    })
+
+    it('answers a read that changed nothing it was addressed to', async () => {
+      await connectClient()
+      const gated = gateTheReads()
+
+      const pending = client.read()
+      await vi.advanceTimersByTimeAsync(0)
+      appState.updateRegisterConfig({ pollRate: 2000 })
+      gated.resolveAll()
+
+      expect((await pending).read).toBe(true)
+    })
+
+    it('names the group a toolbar read failed on, beside no rows', async () => {
+      await connectClient()
+      appState.updateRegisterConfig({ type: 'holding_registers', address: 10, length: 3 })
+      mockModbusRTU.readHoldingRegisters.mockRejectedValue(new Error('Timed out'))
+
+      const outcome = await client.read()
+
+      expect(outcome).toEqual({
+        read: true,
+        data: [],
+        groups: [[10, 3]],
+        errors: [{ group: [10, 3], message: 'Timed out' }]
+      })
+    })
+
+    it('names the group a configured read failed on, beside its error rows', async () => {
+      await connectClient()
+      appState.setReadConfiguration(true)
+      appState.setRegisterMapping({
+        coils: {},
+        discrete_inputs: {},
+        input_registers: {},
+        holding_registers: { 0: { dataType: 'uint16' }, 100: { dataType: 'uint16' } }
+      })
+      mockModbusRTU.readHoldingRegisters.mockImplementation(async (address: number) => {
+        if (address === 100) throw new Error('Illegal data address')
+        return { data: [5], buffer: Buffer.from([0x00, 0x05]) }
+      })
+
+      const outcome = await client.read()
+
+      if (!outcome.read) throw new Error(`the read was refused: ${outcome.reason}`)
+      expect(outcome.errors).toEqual([{ group: [100, 1], message: 'Illegal data address' }])
+      expect(outcome.data.map((row) => [row.id, row.error])).toEqual([
+        [0, undefined],
+        [100, 'Illegal data address']
+      ])
+    })
+  })
+
   describe('read with data', () => {
     it('reads holding registers and sends data', async () => {
       await connectClient()

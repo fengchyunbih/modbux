@@ -58,6 +58,33 @@ type WriteAttempt =
   | { sent: false }
   | { sent: true; transactionIdKey: string; errorMessage: string | undefined }
 
+/** A group whose request failed, with the text the read reported for it. */
+export interface ReadGroupError {
+  group: AddressGroup
+  message: string
+}
+
+/**
+ * What a read did, for a caller in main that wants the values back.
+ *
+ * `register_data` and `address_groups` still carry the same rows to the main
+ * window; this is the same read answered to whoever called it.
+ *
+ * A refused read put nothing on the wire: `busy` is another owner holding the
+ * client, `not_connected` is a port that is shut. `superseded` is a read that
+ * did go out, under a unit id, register type, address, length, mapping or read
+ * configuration that changed before it answered (`AppState.readGeneration`),
+ * so its rows describe a configuration that is gone and the window was not
+ * sent them either.
+ *
+ * A read that went out answers its rows, the groups they were asked for in,
+ * and one entry per group that failed. A failed group in a configured read
+ * also leaves error rows in `data`, which is what the grid draws for it.
+ */
+export type ReadOutcome =
+  | { read: false; reason: 'busy' | 'not_connected' | 'superseded' }
+  | { read: true; data: RegisterData[]; groups: AddressGroup[]; errors: ReadGroupError[] }
+
 /**
  * An exception reply rather than silence.
  *
@@ -581,10 +608,10 @@ export class ModbusClient {
    * poll is. The loops do not go through here, so a poll blocks a read without
    * a read ever blocking a poll.
    */
-  public read = async (): Promise<void> => {
-    if (!this._requireClient('read')) return
+  public read = async (): Promise<ReadOutcome> => {
+    if (!this._requireClient('read')) return { read: false, reason: 'busy' }
 
-    await this._readOwningTheClient()
+    return this._readOwningTheClient()
   }
 
   /**
@@ -595,19 +622,21 @@ export class ModbusClient {
    * passed the question once already, and asking again during its own write
    * would refuse it.
    */
-  private _readOwningTheClient = async (): Promise<void> => {
+  private _readOwningTheClient = async (): Promise<ReadOutcome> => {
     this._clientState.reading = true
     this._sendClientState()
     try {
-      await this._read()
+      return await this._read()
     } finally {
       this._clientState.reading = false
       this._sendClientState()
     }
   }
 
-  private _read = async (): Promise<void> => {
-    if (!this._requireConnected('read', this._clientState.polling)) return
+  private _read = async (): Promise<ReadOutcome> => {
+    if (!this._requireConnected('read', this._clientState.polling)) {
+      return { read: false, reason: 'not_connected' }
+    }
 
     // What this read is addressed to, taken before the first request goes out.
     const readGeneration = this._appState.readGeneration
@@ -618,6 +647,7 @@ export class ModbusClient {
     this._client.setTimeout(this._appState.registerConfig.timeout)
 
     const data: RegisterData[] = []
+    const errors: ReadGroupError[] = []
 
     const { type, address, length } = this._appState.registerConfig
 
@@ -662,6 +692,7 @@ export class ModbusClient {
       } catch (error) {
         const readError = error as Error
         errorMessage = errorText(readError)
+        errors.push({ group: [groupAddress, groupLength], message: errorMessage })
 
         if (this._appState.readConfiguration) {
           // Generate error placeholder rows for configured addresses in this failed group
@@ -707,13 +738,15 @@ export class ModbusClient {
     // rows drawn for the new one. The renderer cannot tell the two apart: only
     // main knows what its read asked. The transactions above are logged either
     // way, because they happened.
-    if (this._appState.readGeneration !== readGeneration) return
+    if (this._appState.readGeneration !== readGeneration)
+      return { read: false, reason: 'superseded' }
 
     if (data.length > 0) {
       // Send the groups so we can slice the utf8 string correctly.
       this._sendGroups(groups)
       this._sendData(data)
     }
+    return { read: true, data, groups, errors }
   }
 
   //
@@ -760,7 +793,7 @@ export class ModbusClient {
    * Awaited rather than refused, because stopping a poll to scan is what the
    * Start button has always done.
    */
-  private _pollRead: Promise<void> | undefined
+  private _pollRead: Promise<ReadOutcome> | undefined
 
   /**
    * Read, then arm the next read, as long as this chain is still the current one.

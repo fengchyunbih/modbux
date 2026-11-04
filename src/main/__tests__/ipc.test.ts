@@ -660,3 +660,18 @@ describe('each guarded channel got its own schema', () => {
     }
   )
 })
+
+// `ModbusClient.read` answers its rows for a caller in main, and the same rows
+// reach the main window as `register_data`. Answered through the invoke as
+// well, every Read button press would carry them across twice.
+describe('the read channel', () => {
+  it('answers nothing, whatever the read answered', async () => {
+    handle.mockClear()
+    const { windows } = createWindows()
+    const read = vi.fn().mockResolvedValue({ read: true, data: [], groups: [], errors: [] })
+    initIpc({} as Electron.App, {} as never, { read } as never, {} as never, windows)
+
+    expect(await invoke('read')).toBeUndefined()
+    expect(read).toHaveBeenCalledOnce()
+  })
+})

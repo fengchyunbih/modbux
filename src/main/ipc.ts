@@ -225,7 +225,8 @@ export const initIpc: InitIpcFn = (app, state, client, server, windows) => {
   ipcHandle('disconnect', () => client.disconnect())
 
   // Read Actions
-  ipcHandle('read', () => client.read())
+  // The rows reach the main window as `register_data`; the renderer is not sent them twice.
+  ipcHandle('read', async () => void (await client.read()))
   ipcHandle('start_polling', () => client.startPolling())
   ipcHandle('stop_polling', () => client.stopPolling())
 
