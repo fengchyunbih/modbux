@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { BaseDataType, RegisterParams, UnitIdString } from '@shared'
 import type { Windows } from '../../windows'
-import { defaultSerialPortOptions } from '@shared'
+import { defaultSerialPortOptions, MCP_PORT } from '@shared'
 import type { IServiceVector } from 'modbus-serial/ServerTCP'
 
 // Configurable port availability for net mock
@@ -1379,6 +1379,21 @@ describe('ModbusServer', () => {
       expect(port).toBe(5022)
     })
 
+    // A store saved before the MCP port was reserved can still hold it.
+    it('walks past the MCP port without probing it', async () => {
+      const port = await server.createServer({ uuid, port: MCP_PORT })
+      expect(port).toBe(MCP_PORT + 1)
+      expect(ServerTCP).toHaveBeenCalledWith(expect.any(Object), {
+        host: '0.0.0.0',
+        port: MCP_PORT + 1
+      })
+    })
+
+    it('still takes the port just below the MCP port', async () => {
+      const port = await server.createServer({ uuid, port: MCP_PORT - 1 })
+      expect(port).toBe(MCP_PORT - 1)
+    })
+
     it('closes existing server before recreating', async () => {
       await server.createServer({ uuid, port: 5020 })
       const firstInstance = vi.mocked(ServerTCP).mock.results[0]?.value
@@ -1754,6 +1769,32 @@ describe('ModbusServer', () => {
       await server.setPort({ uuid, port: 0 })
 
       expect(getAddressees('backend_message')).toEqual(['serverView'])
+    })
+
+    it('refuses the MCP port and keeps the server where it is', async () => {
+      await server.createServer({ uuid, port: 5020 })
+      clearWindowCalls()
+      const callsBefore = vi.mocked(ServerTCP).mock.calls.length
+
+      const port = await server.setPort({ uuid, port: MCP_PORT })
+
+      expect(port).toBe(5020)
+      expect(vi.mocked(ServerTCP).mock.calls.length).toBe(callsBefore)
+      const messages = getWindowCalls('backend_message')
+      expect(messages.map((m) => m[1].message)).toEqual([
+        'Port 15502 is reserved for the MCP server'
+      ])
+    })
+
+    it('refuses the MCP port with no server yet and answers with the default', async () => {
+      const port = await server.setPort({ uuid, port: MCP_PORT })
+      expect(port).toBe(502)
+      expect(ServerTCP).not.toHaveBeenCalled()
+    })
+
+    it('takes the port just above the MCP port', async () => {
+      const port = await server.setPort({ uuid, port: MCP_PORT + 1 })
+      expect(port).toBe(MCP_PORT + 1)
     })
 
     it('refuses port 0 with no server yet and answers with the default', async () => {

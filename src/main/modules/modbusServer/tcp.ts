@@ -1,4 +1,4 @@
-import { CreateServerParams, DEFAULT_MODBUS_PORT } from '@shared'
+import { CreateServerParams, DEFAULT_MODBUS_PORT, MCP_PORT, MCP_PORT_RESERVED } from '@shared'
 import { ServerTCP } from 'modbus-serial'
 import net from 'net'
 import { Windows } from '../../windows'
@@ -162,6 +162,13 @@ export class TcpServers {
       // invoke rejects instead of answering.
       if (!isPort(actualPort)) break
 
+      // A port saved before it was reserved walks on to the next one, the way
+      // a busy port does, so the MCP server can still bind it later.
+      if (actualPort === MCP_PORT) {
+        actualPort++
+        continue
+      }
+
       const result = await this._isPortAvailable(actualPort)
       if (result.available) {
         const bind = await this._bindServer(uuid, actualPort)
@@ -218,6 +225,13 @@ export class TcpServers {
         message: 'A server needs a port between 1 and 65535',
         variant: 'error'
       })
+      return this._port.get(uuid) ?? DEFAULT_MODBUS_PORT
+    }
+
+    // Refused whether or not MCP is running: a Modbus server holding the port
+    // is what would keep the MCP server from starting later.
+    if (requestedPort === MCP_PORT) {
+      emitServerMessage(this._windows, { message: MCP_PORT_RESERVED, variant: 'error' })
       return this._port.get(uuid) ?? DEFAULT_MODBUS_PORT
     }
 
