@@ -830,6 +830,27 @@ it('holds a 64 bit integer as the decimal string the store keeps', () => {
   expect(serverUnitsOf(acceptedPoints(report))['0']?.holding_registers[0]?.value).toBe('-5')
 })
 
+// The fold keeps a datetime as the four ABCD words packed into 64 bits, so
+// the seed is that composite and not the milliseconds the table gave.
+it('holds a fixed datetime as the packed composite the store keeps', () => {
+  const ms = Date.UTC(2024, 0, 1, 12, 30, 0)
+  const report = validatePointTable(
+    [
+      {
+        name: 'Clock',
+        address: 0,
+        registerType: 'holding_registers',
+        dataType: 'datetime',
+        value: ms
+      }
+    ],
+    { target: 'server' }
+  )
+  expect(serverUnitsOf(acceptedPoints(report))['0']?.holding_registers[0]?.value).toBe(
+    '6756503450943488'
+  )
+})
+
 // The scalable types the forward conversion reads, so a type added there and
 // not here is a test that names it.
 it('round trips every scalable type through scaleValue', () => {

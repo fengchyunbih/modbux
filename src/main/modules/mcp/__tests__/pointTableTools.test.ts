@@ -758,6 +758,60 @@ describe('server_get_values', () => {
     expect(context.server.readRegisters).toHaveBeenCalledWith('sim', '2', 'holding_registers', 0, 2)
   })
 
+  // The store holds a datetime as its packed composite, which read as
+  // milliseconds is no date at all.
+  it('answers a datetime as the date its words hold, whatever the store keeps', async () => {
+    const ms = Date.UTC(2024, 0, 1, 12, 30, 0)
+    const abcd = createRegisters('datetime', ms, byteOrderFlags('ABCD'))
+    const packed = abcd.reduce((composite, word) => (composite << 16n) | BigInt(word), 0n)
+    const context = serverContext({
+      server_get_values: async () => ({
+        ...SIM_VALUES,
+        units: {
+          '2': {
+            coils: {},
+            discrete_inputs: {},
+            input_registers: {},
+            holding_registers: {
+              0: {
+                value: String(packed),
+                params: {
+                  address: 0,
+                  registerType: 'holding_registers',
+                  dataType: 'datetime',
+                  comment: 'Clock',
+                  value: ms
+                }
+              },
+              4: {
+                value: 1.235,
+                params: {
+                  address: 4,
+                  registerType: 'holding_registers',
+                  dataType: 'float',
+                  comment: 'Voltage',
+                  value: 1.23456
+                }
+              }
+            }
+          }
+        }
+      })
+    })
+    const wire = createRegisters('datetime', ms, byteOrderFlags('CDAB'))
+    context.setServerWords('sim', '2', 'holding_registers', 0, [
+      ...wire,
+      ...createRegisters('float', 1.23456, byteOrderFlags('CDAB'))
+    ])
+    const client = await connectInMemory(context)
+
+    const result = await client.callTool({ name: 'server_get_values', arguments: { port: 503 } })
+
+    const [unit] = jsonOf(result).units as { registers: { value: unknown; words?: number[] }[] }[]
+    expect(unit?.registers[0]).toMatchObject({ value: '2024/01/01 12:30:00', words: wire })
+    expect(unit?.registers[1]?.value).toBe(Math.fround(1.23456))
+  })
+
   it('narrows the answer to the unit asked for', async () => {
     const context = serverContext()
     const client = await connectInMemory(context)

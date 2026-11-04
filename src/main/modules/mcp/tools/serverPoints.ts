@@ -2,6 +2,11 @@ import z from 'zod'
 import {
   acceptedPoints,
   AddressNotationSchema,
+  ByteOrder,
+  byteOrderFlags,
+  DataType,
+  parseIEC870DateTime,
+  reorderBytes,
   ByteOrderSchema,
   engineeringToRaw,
   PointAddressSchema,
@@ -151,7 +156,11 @@ interface ServerRegisterRow {
   address: number
   comment?: string
   dataType?: string
-  /** What the register holds now: the raw value, decoded in the server's byte order. */
+  /**
+   * What the register holds now, decoded from `words` in the server's byte
+   * order: a number, a decimal string for a 64 bit integer, the date for a
+   * datetime, the string for utf8.
+   */
   value: number | string | boolean
   /**
    * The 16 bit words the server answers a read with, read from main's server
@@ -167,11 +176,53 @@ interface UnitAt {
   context: McpToolContext
   uuid: string
   unitId: UnitIdString
+  order: ByteOrder
+}
+
+/**
+ * The value `words` hold as `dataType`. The store's own value is no answer:
+ * it keeps a float rounded to three decimals and a datetime as its packed
+ * composite, so this is read off the words the server answers a read with.
+ */
+const decodeWords = (
+  dataType: DataType,
+  words: readonly number[],
+  order: ByteOrder,
+  stored: number | string
+): number | string => {
+  const wire = Buffer.alloc(words.length * 2)
+  for (const [index, word] of words.entries()) wire.writeUInt16BE(word, index * 2)
+  const bytes = Buffer.from(reorderBytes(wire, byteOrderFlags(order)))
+  switch (dataType) {
+    case 'int16':
+      return bytes.readInt16BE(0)
+    case 'uint16':
+    case 'bitmap':
+      return bytes.readUInt16BE(0)
+    case 'int32':
+      return bytes.readInt32BE(0)
+    case 'uint32':
+    case 'unix':
+      return bytes.readUInt32BE(0)
+    case 'float':
+      return bytes.readFloatBE(0)
+    case 'double':
+      return bytes.readDoubleBE(0)
+    case 'int64':
+      return bytes.readBigInt64BE(0).toString()
+    case 'uint64':
+      return bytes.readBigUInt64BE(0).toString()
+    case 'datetime':
+      return parseIEC870DateTime(bytes)
+    case 'utf8':
+    case 'none':
+      return stored
+  }
 }
 
 const rowsOf = (
   registers: ServerRegisters,
-  { context, uuid, unitId }: UnitAt
+  { context, uuid, unitId, order }: UnitAt
 ): ServerRegisterRow[] => {
   const rows: ServerRegisterRow[] = []
   for (const registerType of ['coils', 'discrete_inputs'] as const) {
@@ -198,7 +249,10 @@ const rowsOf = (
         address: Number(address),
         dataType: params.dataType,
         ...(params.comment ? { comment: params.comment } : {}),
-        value: params.dataType === 'utf8' ? (params.stringValue ?? '') : value,
+        value:
+          params.dataType === 'utf8'
+            ? (params.stringValue ?? '')
+            : decodeWords(params.dataType, words, order, value),
         words,
         ...(params.min !== undefined && params.max !== undefined && params.interval !== undefined
           ? { generator: { min: params.min, max: params.max, intervalMs: params.interval } }
@@ -230,7 +284,7 @@ const serverGetValues = defineTool({
         .flatMap(([key, registers]) => {
           if (!registers) return []
           const unitId = UnitIdStringSchema.parse(key)
-          const at = { context, uuid: values.uuid, unitId }
+          const at = { context, uuid: values.uuid, unitId, order: values.byteOrder }
           return [{ unitId: Number(unitId), registers: rowsOf(registers, at) }]
         })
         .sort((a, b) => a.unitId - b.unitId)

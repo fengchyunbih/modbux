@@ -19,6 +19,7 @@ import {
   UnitIdStringSchema
 } from './types'
 import {
+  createRegisters,
   getMinMaxValues,
   getValueRangeError,
   holdsExact64Bits,
@@ -756,10 +757,19 @@ export const serverRegisterParams = (point: ResolvedPoint): RegisterParams | und
   return { ...base, value: typeof point.raw === 'number' ? point.raw : 0 }
 }
 
-/** What a register entry holds before main's words reach it. */
+/**
+ * What a register entry holds before main's words reach it, in the meaning
+ * `foldWordIntoComposite` gives it: a datetime is its four words in ABCD packed
+ * into 64 bits, not the milliseconds they encode.
+ */
 const initialValue = (params: RegisterParams): ServerRegisterValue => {
-  if (params.value === undefined || params.dataType === 'utf8') return 0
-  return holdsExact64Bits(params.dataType) ? String(params.value) : params.value
+  const { value, dataType } = params
+  if (value === undefined || dataType === 'utf8' || dataType === 'none') return 0
+  if (dataType === 'datetime') {
+    const words = createRegisters(dataType, value, { littleEndian: false, byteSwap: false })
+    return String(words.reduce((packed, word) => (packed << 16n) | BigInt(word), 0n))
+  }
+  return holdsExact64Bits(dataType) ? String(value) : value
 }
 
 /** An empty unit, the four maps a server keeps per unit id. */
