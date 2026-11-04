@@ -1,12 +1,10 @@
 import FileOpen from '@mui/icons-material/FileOpen'
 import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
-import { useClientZustand } from '@renderer/context/client.zustand'
-import { migrateClientConfig, resetMessage } from '@shared'
+import { importClientConfig } from '@renderer/context/clientConfigFile'
+import { resetMessage } from '@shared'
 import { useSnackbar } from 'notistack'
 import { useRef, useState, useCallback } from 'react'
-import { showMapping } from '@renderer/context/data.zustand'
-import { asOneClientStep } from '@renderer/context/clientUndo'
 import { meme } from '@renderer/components/shared/inputs/meme'
 
 const LoadButton = meme((): JSX.Element => {
@@ -22,24 +20,14 @@ const LoadButton = meme((): JSX.Element => {
       openingRef.current = true
       setOpening(true)
 
-      const clientZustand = useClientZustand.getState()
-
       try {
-        const content = await file.text()
+        const outcome = await importClientConfig(await file.text())
+        if (!outcome.ok) {
+          enqueueSnackbar({ variant: 'error', message: `Failed to load config: ${outcome.error}` })
+          return
+        }
 
-        // Use migration framework to handle all config versions
-        const migrationResult = migrateClientConfig(content)
-        const { config, migrated, futureVersion } = migrationResult
-
-        // Set name, endianness and register mapping, as one step to undo
-        await asOneClientStep(async () => {
-          if (config.name) clientZustand.setName(config.name)
-          await clientZustand.setLittleEndian(config.littleEndian)
-          await clientZustand.replaceRegisterMapping(config.registerMapping)
-        })
-
-        // Show success notification
-        if (migrated) {
+        if (outcome.migrated) {
           enqueueSnackbar({
             variant: 'info',
             message: 'Configuration updated from older format',
@@ -55,6 +43,7 @@ const LoadButton = meme((): JSX.Element => {
         // A config from a newer Modbux is parsed against the current schema
         // and keeps what matches, so the warning says which fields did not come
         // across rather than that some feature may not work.
+        const { futureVersion } = outcome
         if (futureVersion) {
           enqueueSnackbar({
             variant: 'warning',
@@ -66,11 +55,8 @@ const LoadButton = meme((): JSX.Element => {
             autoHideDuration: 8000
           })
         }
-        // Inside the `try`, because it draws the grid from the mapping: on a
-        // file that was refused the mapping is the one already there, and the
-        // rows it builds would drop the values a read loop had put in them.
-        showMapping()
       } catch (error) {
+        // `file.text()` rejects for a file that is gone by the time it is read.
         const tError = error as Error
         enqueueSnackbar({ variant: 'error', message: `Failed to load config: ${tError.message}` })
         console.error('Config load error:', error)

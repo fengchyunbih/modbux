@@ -5,16 +5,10 @@ import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import { downloadJson } from '@renderer/components/shared/downloadJson'
 import { meme } from '@renderer/components/shared/inputs/meme'
-import { useLayoutZustand } from '@renderer/context/layout.zustand'
 import { useServerZustand } from '@renderer/context/server.zustand'
 import { asOneServerStep } from '@renderer/context/serverUndo'
-import { checkHasConfig, migrateServerConfig, resetMessage } from '@shared'
-import {
-  CURRENT_SERVER_CONFIG_VERSION,
-  ServerConfig,
-  ServerRegistersPerUnit,
-  UnitIdStringSchema
-} from '@shared'
+import { exportServerConfig, importServerConfig } from '@renderer/context/serverConfigFile'
+import { resetMessage } from '@shared'
 import { snakeCase } from 'lodash'
 import { useSnackbar } from 'notistack'
 import { useRef, useState, useCallback } from 'react'
@@ -41,96 +35,58 @@ const useOpen: UseOpenHook = () => {
       openingRef.current = true
       setOpening(true)
 
-      const serverZustand = useServerZustand.getState()
-
       try {
-        // One step to undo, the reset and the `init` after it included.
-        await asOneServerStep(serverZustand.selectedUuid, async () => {
-          try {
-            const content = await file.text()
+        const outcome = await importServerConfig(await file.text())
+        if (!outcome.ok) {
+          enqueueSnackbar({ variant: 'error', message: `Failed to load config: ${outcome.error}` })
+          return
+        }
+        const { config, migrated, wasMixedEndianness, futureVersion } = outcome
 
-            // Use migration framework to handle all config versions
-            const migrationResult = migrateServerConfig(content)
-            const { config, migrated, wasMixedEndianness, futureVersion } = migrationResult
+        if (migrated) {
+          enqueueSnackbar({
+            variant: 'info',
+            message: 'Configuration updated from older format',
+            autoHideDuration: 5000
+          })
+        } else {
+          enqueueSnackbar({
+            variant: 'success',
+            message: 'Configuration opened successfully'
+          })
+        }
 
-            // A unit the file does not name is not written over on the way in, so
-            // whatever the previous config left on it would answer a master after
-            // this one is loaded. Reset takes both sides down to nothing first.
-            //
-            // After the migration rather than before it, because `migrateServerConfig`
-            // needs nothing from the store and throws on both shapes a user picks by
-            // accident, a client config file and malformed JSON. Reset first, and the
-            // configuration on screen was gone in main and in the store before
-            // anything had read the file.
-            await serverZustand.resetServer(serverZustand.selectedUuid)
+        if (wasMixedEndianness) {
+          enqueueSnackbar({
+            variant: 'warning',
+            message: `Warning: Config had mixed byte order settings. Now using ${config.littleEndian ? 'Little' : 'Big'}-Endian globally. Please verify.`,
+            autoHideDuration: 8000
+          })
+        }
 
-            // Set name and littleEndian
-            serverZustand.setName(config.name)
-            serverZustand.setLittleEndian(config.littleEndian)
-
-            // Load all unit configs
-            for (const unitId of UnitIdStringSchema.options) {
-              const serverRegisters = config.serverRegistersPerUnit[unitId]
-              if (!serverRegisters) continue
-              const hasConfig = checkHasConfig(serverRegisters)
-              if (!hasConfig) continue
-              serverZustand.replaceServerRegisters(unitId, serverRegisters)
-            }
-
-            // Show success notification
-            if (migrated) {
-              enqueueSnackbar({
-                variant: 'info',
-                message: 'Configuration updated from older format',
-                autoHideDuration: 5000
-              })
-            } else {
-              enqueueSnackbar({
-                variant: 'success',
-                message: 'Configuration opened successfully'
-              })
-            }
-
-            // Show warning for mixed endianness
-            if (wasMixedEndianness) {
-              enqueueSnackbar({
-                variant: 'warning',
-                message: `Warning: Config had mixed byte order settings. Now using ${config.littleEndian ? 'Little' : 'Big'}-Endian globally. Please verify.`,
-                autoHideDuration: 8000
-              })
-            }
-
-            // A config from a newer Modbux is parsed against the current schema and
-            // keeps what matches, so the warning says which fields did not come
-            // across rather than that some feature may not work.
-            if (futureVersion) {
-              enqueueSnackbar({
-                variant: 'warning',
-                message: resetMessage('Server', futureVersion),
-                // A notice that everything came across is not one the user has to
-                // dismiss, and it sits on top of "Configuration opened
-                // successfully" either way.
-                persist: futureVersion.fields.length > 0,
-                autoHideDuration: 8000
-              })
-            }
-          } catch (error) {
-            const tError = error as Error
-            enqueueSnackbar({
-              variant: 'error',
-              message: `Failed to load config: ${tError.message}`
-            })
-            console.error('Config load error:', error)
-          } finally {
-            // `init` runs either way: on a refused file it hands main the
-            // configuration that is still there, which is the one on screen.
-            await serverZustand.init(serverZustand.selectedUuid)
-          }
-        })
+        // A config from a newer Modbux is parsed against the current schema and
+        // keeps what matches, so the warning says which fields did not come
+        // across rather than that some feature may not work.
+        if (futureVersion) {
+          enqueueSnackbar({
+            variant: 'warning',
+            message: resetMessage('Server', futureVersion),
+            // A notice that everything came across is not one the user has to
+            // dismiss, and it sits on top of "Configuration opened
+            // successfully" either way.
+            persist: futureVersion.fields.length > 0,
+            autoHideDuration: 8000
+          })
+        }
+      } catch (error) {
+        // `file.text()` rejects for a file that is gone by the time it is read.
+        const tError = error as Error
+        enqueueSnackbar({ variant: 'error', message: `Failed to load config: ${tError.message}` })
+        console.error('Config load error:', error)
       } finally {
-        // In the `finally` because `file.text()` is inside the `try` now, and a
-        // file that is gone by the time it is read left `opening` true and
-        // every server button disabled until the app was restarted.
+        // A file that is gone by the time it is read left `opening` true and
+        // every server button disabled until the app was restarted, before
+        // this was a `finally`.
         openingRef.current = false
         setOpening(false)
       }
@@ -150,30 +106,11 @@ type UseSaveHook = () => {
 
 const useSave: UseSaveHook = () => {
   const save = useCallback(() => {
+    const json = exportServerConfig()
+    if (json === undefined) return
     const { servers, selectedUuid } = useServerZustand.getState()
-    const server = servers[selectedUuid]
-    if (!server) return
-    const name = server.name ?? ''
-
-    const serverRegistersPerUnit: ServerRegistersPerUnit = {}
-    const registersPerUnit = server.registers
-
-    Object.entries(registersPerUnit).forEach(([unitId, registers]) => {
-      if (!checkHasConfig(registers)) return
-      serverRegistersPerUnit[unitId] = registers
-    })
-
-    // The store reads the version once at startup; it cannot change after that
-    const modbuxVersion = useLayoutZustand.getState().version
-
-    const config: ServerConfig = {
-      version: CURRENT_SERVER_CONFIG_VERSION,
-      modbuxVersion,
-      name,
-      littleEndian: server.littleEndian,
-      serverRegistersPerUnit
-    }
-    downloadJson(`modbux_server_${snakeCase(name)}.json`, JSON.stringify(config, null, 2))
+    const name = servers[selectedUuid]?.name ?? ''
+    downloadJson(`modbux_server_${snakeCase(name)}.json`, json)
   }, [])
 
   return { save }
