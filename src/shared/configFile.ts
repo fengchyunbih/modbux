@@ -1,4 +1,9 @@
-import { RegisterMapConfig, RegisterMapping } from './types/client'
+import {
+  ConnectionConfig,
+  RegisterConfig,
+  RegisterMapConfig,
+  RegisterMapping
+} from './types/client'
 import { RegisterTypeSchema } from './types/register'
 import { ServerConfig, ServerRegistersPerUnit } from './types/server'
 import { checkHasConfig } from './utils'
@@ -46,7 +51,8 @@ export const parseServerConfig = (json: string): ConfigFileResult<ServerConfig> 
 export interface ClientConfigSource {
   modbuxVersion: string
   name: string
-  littleEndian: boolean
+  connectionConfig: ConnectionConfig
+  registerConfig: RegisterConfig
   registerMapping: RegisterMapping
 }
 
@@ -66,11 +72,15 @@ export const serializeClientConfig = (source: ClientConfigSource): string => {
     }
   }
 
+  const { littleEndian, ...readSettings } = source.registerConfig
   const config: RegisterMapConfig = {
     version: CURRENT_CLIENT_CONFIG_VERSION,
     modbuxVersion: source.modbuxVersion,
     name: source.name,
-    littleEndian: source.littleEndian,
+    littleEndian,
+    byteSwap: false,
+    connectionConfig: source.connectionConfig,
+    registerConfig: readSettings,
     registerMapping
   }
   return JSON.stringify(config, null, 2)
@@ -81,6 +91,7 @@ export interface ServerConfigSource {
   modbuxVersion: string
   name: string
   littleEndian: boolean
+  port: number
   registers: ServerRegistersPerUnit
 }
 
@@ -100,6 +111,8 @@ export const serializeServerConfig = (source: ServerConfigSource): string => {
     modbuxVersion: source.modbuxVersion,
     name: source.name,
     littleEndian: source.littleEndian,
+    byteSwap: false,
+    port: source.port,
     serverRegistersPerUnit
   }
   return JSON.stringify(config, null, 2)

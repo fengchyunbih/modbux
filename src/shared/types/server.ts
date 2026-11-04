@@ -3,6 +3,7 @@ import { BaseDataTypeSchema } from './datatype'
 import { BitMapConfigSchema } from './bitmap'
 import { PortSchema, RegisterAddressKeySchema, RegisterAddressSchema } from './ranges'
 import { SerialPortOptionsSchema } from './serial'
+import { ReservedByteSwapSchema } from './byteSwap'
 import { UnitIdString, UnitIdStringSchema } from './unitid'
 import { getAddressFitError, getValueRangeError, MAX_UTF8_LENGTH } from '../encoding'
 import {
@@ -251,12 +252,19 @@ export const ServerRegistersPerUnitSchema = z.record(
 )
 export type ServerRegistersPerUnit = z.infer<typeof ServerRegistersPerUnitSchema>
 
-// Final server config schema (v2 with metadata)
+/**
+ * A server config file, v4.
+ *
+ * `port` arrived in v4 and is optional, because a file migrated from v3 has
+ * none. Opening a file without it keeps the port the server listens on.
+ */
 export const ServerConfigSchema = z.object({
   version: z.number(),
   modbuxVersion: z.string(),
   name: z.string(),
   littleEndian: z.boolean(),
+  byteSwap: ReservedByteSwapSchema,
+  port: PortSchema.optional(),
   serverRegistersPerUnit: ServerRegistersPerUnitSchema
 })
 export type ServerConfig = z.infer<typeof ServerConfigSchema>

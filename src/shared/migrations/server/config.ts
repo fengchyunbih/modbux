@@ -13,6 +13,7 @@ import {
   dropUnservableConfigRegisters,
   isRecord,
   parseConfigFile,
+  refuseByteSwap,
   refuseOtherSidesConfig,
   renameLegacyRegisterTypeKeys,
   stringifyExact64BitValues
@@ -27,12 +28,13 @@ import { repairPersisted } from '../../repairPersisted'
  * the loop below counts the steps and this number only says where to stop, so
  * v1 to v2 writes 2 whatever this becomes.
  */
-export const CURRENT_SERVER_CONFIG_VERSION = 3
+export const CURRENT_SERVER_CONFIG_VERSION = 4
 
 const SERVER_CONFIG_MIGRATIONS: Record<number, Migration<ServerConfig>> = {
   1: migrateServerV1toV2,
-  2: migrateServerV2toV3
-  // Future: 3: migrateServerV3toV4
+  2: migrateServerV2toV3,
+  3: migrateServerV3toV4
+  // Future: 4: migrateServerV4toV5
 }
 
 /**
@@ -146,6 +148,27 @@ function migrateServerV2toV3(v2Config: unknown): ServerConfig {
 }
 
 /**
+ * Migrate server config from v3 to v4: a file may carry the port, and reserves
+ * `byteSwap`.
+ *
+ * A v3 file has neither. A hand-edited v3 file carrying a `port` does not
+ * apply it, so opening the result keeps the port the server listens on. The
+ * rest of the blob is kept as it is, because `wasMixedEndianness` from the v1
+ * step rides on it to the end of `migrateServerConfig`.
+ *
+ * The bool shape and the 64 bit strings go with it, for the reason the v2 to
+ * v3 step carries the bool shape: both ran on the `detectedVersion === CURRENT`
+ * branch, and a v3 file takes this step instead of that branch now.
+ */
+function migrateServerV3toV4(v3Config: unknown): ServerConfig {
+  const config: Record<string, unknown> = { ...(v3Config as Record<string, unknown>), version: 4 }
+  delete config.port
+  migrateBoolShapeInConfig(config.serverRegistersPerUnit)
+  stringifyExact64BitValues({ servers: { config: { registers: config.serverRegistersPerUnit } } })
+  return config as ServerConfig
+}
+
+/**
  * Convert old `boolean` bool entries to `{ value: boolean }` across every unit
  * of a parsed config. Mutates in place. Safe to call on already-migrated data.
  */
@@ -161,6 +184,7 @@ function migrateBoolShapeInConfig(serverRegistersPerUnit: unknown): void {
 export function migrateServerConfig(raw: string): MigrationResult<ServerConfig> {
   const { parsed, detectedVersion } = parseConfigFile(raw)
   refuseOtherSidesConfig(parsed, 'server')
+  refuseByteSwap(parsed)
 
   // Current version - migrate bool shape if needed, then validate
   if (detectedVersion === CURRENT_SERVER_CONFIG_VERSION) {

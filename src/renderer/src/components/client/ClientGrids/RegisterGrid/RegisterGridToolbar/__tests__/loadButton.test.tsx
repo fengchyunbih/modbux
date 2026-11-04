@@ -25,7 +25,7 @@ import { useClientZustand } from '@renderer/context/client.zustand'
 import LoadButton from '../LoadButton'
 
 const CONFIG = JSON.stringify({
-  version: 2,
+  version: 3,
   modbuxVersion: '2.0.0',
   name: 'Test Client',
   littleEndian: false,

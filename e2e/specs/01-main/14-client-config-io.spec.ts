@@ -102,7 +102,7 @@ test.describe.serial('Client config I/O — view, save, clear, load', () => {
     const content = await fs.readFile(savePath, 'utf-8')
     const config = JSON.parse(content)
 
-    expect(config.version).toBe(2)
+    expect(config.version).toBe(3)
     expect(config.name).toBe('Test Client')
     expect(config.littleEndian).toBe(false)
     expect(config.registerMapping).toBeDefined()

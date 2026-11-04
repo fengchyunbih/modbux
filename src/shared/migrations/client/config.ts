@@ -6,6 +6,7 @@ import {
   dropUnreadableConfigMapping,
   formatZodError,
   parseConfigFile,
+  refuseByteSwap,
   refuseOtherSidesConfig,
   renameLegacyRegisterTypeKeys
 } from '../shared'
@@ -17,7 +18,7 @@ import {
  * the loop below counts the steps and this number only says where to stop, so
  * v1 to v2 writes 2 whatever this becomes.
  */
-export const CURRENT_CLIENT_CONFIG_VERSION = 2
+export const CURRENT_CLIENT_CONFIG_VERSION = 3
 
 interface V1ClientConfig {
   name?: string
@@ -25,8 +26,9 @@ interface V1ClientConfig {
 }
 
 const CLIENT_CONFIG_MIGRATIONS: Record<number, Migration<RegisterMapConfig>> = {
-  1: migrateClientV1toV2
-  // Future: 2: migrateClientV2toV3
+  1: migrateClientV1toV2,
+  2: migrateClientV2toV3
+  // Future: 3: migrateClientV3toV4
 }
 
 /**
@@ -47,11 +49,32 @@ function migrateClientV1toV2(v1Config: unknown): RegisterMapConfig {
 }
 
 /**
+ * Migrate client config from v2 to v3: a file may carry connection and read
+ * settings, and reserves `byteSwap`.
+ *
+ * A v2 file has none of them, and the step names the v2 fields one by one
+ * rather than spreading the file, so a hand-edited v2 file carrying a
+ * `connectionConfig` does not apply it. Opening the result keeps the
+ * connection and read settings the client holds.
+ */
+function migrateClientV2toV3(v2Config: unknown): RegisterMapConfig {
+  const config = v2Config as RegisterMapConfig
+  return {
+    version: 3,
+    modbuxVersion: config.modbuxVersion,
+    name: config.name,
+    littleEndian: config.littleEndian,
+    registerMapping: config.registerMapping
+  }
+}
+
+/**
  * Migrate client config to current version
  */
 export function migrateClientConfig(raw: string): MigrationResult<RegisterMapConfig> {
   const { parsed, detectedVersion } = parseConfigFile(raw)
   refuseOtherSidesConfig(parsed, 'client')
+  refuseByteSwap(parsed)
 
   // Current version - no migration needed
   if (detectedVersion === CURRENT_CLIENT_CONFIG_VERSION) {

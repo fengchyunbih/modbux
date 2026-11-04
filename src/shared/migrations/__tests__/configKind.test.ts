@@ -82,12 +82,12 @@ describe('the client', () => {
     expect(() => migrateClientConfig(serverV2)).toThrow('This is not a client configuration')
   })
 
-  // A server config this build saves is v3, and the client's own version is
-  // 2, so without the refusal it took the newer-version path and loaded an
+  // A server config this build saves is v4, and the client's own version is
+  // 3, so without the refusal it took the newer-version path and loaded an
   // empty mapping.
   it('refuses a server config this build saves', () => {
-    const serverV3 = JSON.stringify({ ...JSON.parse(serverV2), version: 3 })
-    expect(() => migrateClientConfig(serverV3)).toThrow('This is not a client configuration')
+    const serverV4 = JSON.stringify({ ...JSON.parse(serverV2), version: 4 })
+    expect(() => migrateClientConfig(serverV4)).toThrow('This is not a client configuration')
   })
 
   it('refuses a server config from before units', () => {
@@ -102,6 +102,7 @@ describe('the client', () => {
   })
 
   it('opens a versioned client config', () => {
-    expect(migrateClientConfig(clientV2).migrated).toBe(false)
+    const { config } = migrateClientConfig(clientV2)
+    expect(Object.keys(config.registerMapping.holding_registers)).toEqual(['0', '1'])
   })
 })

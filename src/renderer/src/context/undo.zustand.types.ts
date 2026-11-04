@@ -67,10 +67,16 @@ export interface ClientMappingStep {
   value: RegisterMapValue | undefined
 }
 
-/** What Load and Clear Config replace together, so one undo puts all of it back. */
+/**
+ * What Load and Clear Config replace together, so one undo puts all of it back.
+ *
+ * The connection and register config are here whole because a client config
+ * file from v3 on carries them, and Load applies them.
+ */
 export interface ClientConfiguration {
   name: string
-  littleEndian: boolean
+  connectionConfig: ConnectionConfig
+  registerConfig: RegisterConfig
   registerMapping: RegisterMapping
 }
 

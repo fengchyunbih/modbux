@@ -41,7 +41,7 @@ const useOpen: UseOpenHook = () => {
           enqueueSnackbar({ variant: 'error', message: `Failed to load config: ${outcome.error}` })
           return
         }
-        const { config, migrated, wasMixedEndianness, futureVersion } = outcome
+        const { config, migrated, wasMixedEndianness, futureVersion, portRefused } = outcome
 
         if (migrated) {
           enqueueSnackbar({
@@ -60,6 +60,16 @@ const useOpen: UseOpenHook = () => {
           enqueueSnackbar({
             variant: 'warning',
             message: `Warning: Config had mixed byte order settings. Now using ${config.littleEndian ? 'Little' : 'Big'}-Endian globally. Please verify.`,
+            autoHideDuration: 8000
+          })
+        }
+
+        // The refusal has a message of its own, from the store or from main,
+        // and this one says the rest of the file came in.
+        if (portRefused !== undefined) {
+          enqueueSnackbar({
+            variant: 'warning',
+            message: `Port ${portRefused} from the file was not applied. The rest of the configuration was opened.`,
             autoHideDuration: 8000
           })
         }

@@ -114,6 +114,13 @@ const replayServer = async (step: ServerRecordStep): Promise<ServerRecordStep | 
   }
   await useServerZustand.getState().restoreServer(step.uuid, step.value)
 
+  // `restoreServer` keeps the port the server listens on, and opening a config
+  // file can move it, so a server that stayed is asked for its old port here.
+  // `setPort` answers on the selected server, which `show` made this one.
+  if (current && useServerZustand.getState().servers[step.uuid]?.port !== step.value.port) {
+    await useServerZustand.getState().setPort(step.value.port)
+  }
+
   // A port something else took meanwhile is walked past, and the server
   // listens on another one than it had. Said, because a master still aims at
   // the old one.

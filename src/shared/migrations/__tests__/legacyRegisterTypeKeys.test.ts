@@ -68,7 +68,6 @@ describe('the text a config carries', () => {
   it.each(legacyNames)('keeps a client config named after %s', (name) => {
     const result = migrateClientConfig(clientConfigNamed(`${name} bank A`))
 
-    expect(result.migrated).toBe(false)
     expect(result.config.name).toBe(`${name} bank A`)
   })
 

@@ -1,6 +1,7 @@
 import { isConnectionAddressGiven, isReadLengthGiven } from '@shared'
 import { deepEqual } from 'fast-equals'
 import { useClientZustand } from './client.zustand'
+import { ClientZustand } from './client.zustand.types'
 import { showMapping, useDataZustand } from './data.zustand'
 import { replayTop, useUndoZustand } from './undo.zustand'
 import {
@@ -107,31 +108,99 @@ const replayMapping = async (step: ClientMappingStep): Promise<ClientMappingStep
 }
 
 const currentConfiguration = (): ClientConfiguration => {
-  const { name, registerConfig, registerMapping } = useClientZustand.getState()
-  return { name, littleEndian: registerConfig.littleEndian, registerMapping }
+  const { name, connectionConfig, registerConfig, registerMapping } = useClientZustand.getState()
+  return { name, connectionConfig, registerConfig, registerMapping }
 }
 
 /**
- * Puts back what Load or Clear Config replaced, as a whole or not at all.
- *
- * The byte order goes first and is put back if main then refuses the mapping,
- * so a refused step leaves both where they were. The refusal still costs read
- * configuration, which `replaceRegisterMapping` turns off before it asks.
+ * The fields a configuration sets through their setters, in the order they
+ * are written. The byte order is the last of them, so it goes in right before
+ * the mapping, as it did when it was the only one.
  */
+const CONFIGURATION_FIELDS: readonly Exclude<ClientField, 'name'>[] = [
+  'protocol',
+  'host',
+  'port',
+  'com',
+  'baudRate',
+  'parity',
+  'dataBits',
+  'stopBits',
+  'unitId',
+  'address',
+  'length',
+  'type',
+  'pollRate',
+  'timeout',
+  'advancedMode',
+  'show64BitValues',
+  'addressBase',
+  'littleEndian'
+]
+
+/** Writes one field to what `source` holds, and answers whether the store holds it after. */
+const writeFieldFrom = async <Field extends ClientField>(
+  field: Field,
+  source: ClientZustand
+): Promise<boolean> => {
+  const value = clientFieldReaders[field](source)
+  await clientFieldWriters[field](value)
+  return clientFieldReaders[field](useClientZustand.getState()) === value
+}
+
+/**
+ * Makes the client hold `target`, as a whole or not at all.
+ *
+ * Each field that differs goes through its own setter, so it passes the same
+ * guards and reaches main the same way an edit does. A connection field that
+ * differs while a connection stands is refused before anything is written,
+ * because its setter would refuse it after the others had gone in. When main
+ * refuses a field or the mapping, the fields already written are put back, so
+ * a refusal leaves the client as it was. It still costs read configuration,
+ * which `replaceRegisterMapping` turns off before it asks.
+ */
+export const writeClientConfiguration = async (
+  target: ClientConfiguration
+): Promise<'done' | 'refused' | 'refused-connected'> => {
+  const before = useClientZustand.getState()
+  const targetState: ClientZustand = {
+    ...before,
+    connectionConfig: target.connectionConfig,
+    registerConfig: target.registerConfig
+  }
+  const changed = CONFIGURATION_FIELDS.filter(
+    (field) => clientFieldReaders[field](targetState) !== clientFieldReaders[field](before)
+  )
+  if (!isDisconnected() && changed.some((field) => CONNECTION_FIELDS.has(field))) {
+    return 'refused-connected'
+  }
+
+  const written: ClientField[] = []
+  const putBack = async (): Promise<'refused'> => {
+    for (const field of written.reverse()) await writeFieldFrom(field, before)
+    return 'refused'
+  }
+
+  for (const field of changed) {
+    written.push(field)
+    if (!(await writeFieldFrom(field, targetState))) return putBack()
+  }
+  if (!(await useClientZustand.getState().replaceRegisterMapping(target.registerMapping))) {
+    return putBack()
+  }
+  useClientZustand.getState().setName(target.name)
+  showMapping()
+  return 'done'
+}
+
+/** Puts back what Load or Clear Config replaced, as a whole or not at all. */
 const replayConfiguration = async (
   step: ClientConfigurationStep
-): Promise<ClientConfigurationStep | undefined> => {
+): Promise<ClientConfigurationStep | UndoRefusal | undefined> => {
   const replaced: ClientConfigurationStep = { kind: 'configuration', value: currentConfiguration() }
-  const client = useClientZustand.getState()
-
-  if (!(await client.setLittleEndian(step.value.littleEndian))) return undefined
-  if (!(await client.replaceRegisterMapping(step.value.registerMapping))) {
-    await client.setLittleEndian(replaced.value.littleEndian)
-    return undefined
-  }
-  client.setName(step.value.name)
-  showMapping()
-  return replaced
+  const outcome = await writeClientConfiguration(step.value)
+  if (outcome === 'refused-connected') return outcome
+  return outcome === 'done' ? replaced : undefined
 }
 
 const replay = (step: ClientUndoStep): Promise<ClientUndoStep | UndoRefusal | undefined> => {
@@ -159,10 +228,10 @@ export const redoClient = (): Promise<UndoOutcome> => move('redo')
 /**
  * Runs an action that replaces the configuration, and records it as one step.
  *
- * Load writes the name, the byte order and the mapping, and Clear Config the
- * name and the mapping. Each setter would record its own step; quiet while the
- * action runs, they record none, and the step recorded after carries all three
- * as they were. That step goes on the stack directly rather than through
+ * Load writes the name, the connection and register config and the mapping,
+ * and Clear Config the name and the mapping. Each setter would record its own
+ * step; quiet while the action runs, they record none, and the step recorded
+ * after carries all of them as they were. That step goes on the stack directly rather than through
  * `recordClient`, which would drop it while an undo that started first is
  * still quiet.
  */

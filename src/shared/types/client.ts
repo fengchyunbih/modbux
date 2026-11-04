@@ -12,6 +12,7 @@ import {
 } from './ranges'
 import { RegisterType, RegisterTypeSchema } from './register'
 import { SerialPortOptionsSchema } from './serial'
+import { ReservedByteSwapSchema } from './byteSwap'
 
 //
 //
@@ -54,16 +55,6 @@ export const RegisterMappingSchema = z.object({
   holding_registers: RegisterMapObjectSchema
 } satisfies Record<RegisterType, typeof RegisterMapObjectSchema>)
 export type RegisterMapping = z.infer<typeof RegisterMappingSchema>
-
-// Client config schema (v2 with metadata)
-export const RegisterMapConfigSchema = z.object({
-  version: z.number(),
-  modbuxVersion: z.string(),
-  name: z.string().optional(),
-  littleEndian: z.boolean(),
-  registerMapping: RegisterMappingSchema
-})
-export type RegisterMapConfig = z.infer<typeof RegisterMapConfigSchema>
 
 //
 //
@@ -271,6 +262,37 @@ export const RegisterConfigSchema = z.object({
   addressBase: z.enum(['0', '1'])
 })
 export type RegisterConfig = z.infer<typeof RegisterConfigSchema>
+
+//
+//
+// Client config file
+
+/**
+ * The read settings a client config file carries: the register config without
+ * the byte order, which the file keeps at its top level as it did before v3.
+ */
+export const ClientConfigReadSettingsSchema = RegisterConfigSchema.omit({ littleEndian: true })
+export type ClientConfigReadSettings = z.infer<typeof ClientConfigReadSettingsSchema>
+
+/**
+ * A client config file, v3.
+ *
+ * `connectionConfig` and `registerConfig` arrived in v3 and are optional,
+ * because a file migrated from v2 has neither. Opening a file without them
+ * keeps the connection and read settings the client holds; opening one with
+ * them applies them.
+ */
+export const RegisterMapConfigSchema = z.object({
+  version: z.number(),
+  modbuxVersion: z.string(),
+  name: z.string().optional(),
+  littleEndian: z.boolean(),
+  byteSwap: ReservedByteSwapSchema,
+  connectionConfig: ConnectionConfigSchema.optional(),
+  registerConfig: ClientConfigReadSettingsSchema.optional(),
+  registerMapping: RegisterMappingSchema
+})
+export type RegisterMapConfig = z.infer<typeof RegisterMapConfigSchema>
 
 //
 //

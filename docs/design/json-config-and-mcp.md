@@ -132,3 +132,8 @@ Prompts：`point_table_to_client`、`point_table_to_simulator`、閉環測試。
    - 被佔用時 MCP 不啟動，設定頁顯示錯誤，不自動改用別的 port，因為 MCP client 端寫死了這個 URL。
    - 使用者手動把 Modbus server 的 port 設成 `15502` 時，要拒絕。
 6. **文件使用正體中文。**
+7. **步驟 2 的設定檔格式。** Client 檔升到 v3，新增選填的 `connectionConfig`（`ConnectionConfigSchema`）與 `registerConfig`（`RegisterConfigSchema` 去掉 `littleEndian`，byte order 仍放在最上層）。Server 檔升到 v4，新增選填的 `port`。兩者都有 `byteSwap`，只接受 `false`。
+   - 舊檔沒有這些欄位，開檔時沿用目前 store 裡的值，不套用預設值：開一份 v2 的 Client 檔不會改掉使用者現在的連線設定。v2 到 v3、v3 到 v4 的遷移會丟掉手改舊檔裡多出來的這些欄位。
+   - 開 v3 Client 檔時，連線設定與目前不同而 Client 正連著線，整份拒絕；main 拒絕其中一個欄位或 mapping 時，已寫入的欄位還原。
+   - 開 v4 Server 檔時，port 走 `setPort`；被拒絕時照樣載入其餘內容並提示。RTU 模式不套用 port。復原會連 port 一起還原。
+   - `byteSwap` 不是 `false` 的檔，不論宣稱哪個版本，都在遷移前拒絕。
