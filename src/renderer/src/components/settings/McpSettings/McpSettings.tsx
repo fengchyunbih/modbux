@@ -163,6 +163,28 @@ const Field = meme(
   )
 )
 
+/** The stdio shim, for an MCP client that cannot speak HTTP. It finds the token itself. */
+const StdioCommands = meme((): JSX.Element | null => {
+  const command = useMcpSettingsZustand((z) => z.status?.stdio?.command)
+  const claudeCodeCommand = useMcpSettingsZustand((z) => z.status?.stdio?.claudeCodeCommand)
+  if (command === undefined || claudeCodeCommand === undefined) return null
+
+  return (
+    <>
+      <Field
+        label="Claude Code over stdio: run this once instead of the command above"
+        value={claudeCodeCommand}
+        testId="mcp-stdio-claude-command"
+      />
+      <Field
+        label="Any client that starts a stdio server: this command. It reads the token from mcp.json, or from MODBUX_MCP_TOKEN."
+        value={command}
+        testId="mcp-stdio-command"
+      />
+    </>
+  )
+})
+
 const Connection = meme((): JSX.Element => {
   const url = useMcpSettingsZustand((z) => z.status?.url ?? '')
   const token = useMcpSettingsZustand((z) => z.status?.token ?? '')
@@ -179,6 +201,7 @@ const Connection = meme((): JSX.Element => {
         value={claudeCodeMcpCommand(token)}
         testId="mcp-claude-command"
       />
+      <StdioCommands />
       <Typography variant="body2" color="text.secondary">
         Any other MCP client: Streamable HTTP transport, the URL above, and the header
         Authorization: Bearer followed by the token. MCP works only while this window is open.

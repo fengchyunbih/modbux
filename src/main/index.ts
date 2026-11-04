@@ -45,6 +45,13 @@ const mcp = new McpService({
     mainWindowOpen: (): boolean => windows.main !== null && !windows.main.isDestroyed()
   },
   version: app.getVersion(),
+  // Packaged, the shim runs under the Modbux binary acting as node; from the
+  // repository it runs under node.
+  stdioLaunch: {
+    executable: app.isPackaged ? process.execPath : 'node',
+    script: join(app.getAppPath(), 'out', 'main', 'mcpStdio.js'),
+    electronBinary: app.isPackaged
+  },
   onStatus: (status): void => windows.send('mcp_status', status, 'main')
 })
 

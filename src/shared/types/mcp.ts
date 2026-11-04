@@ -35,6 +35,28 @@ export const mcpUrl = (port: number = MCP_PORT): string => `http://${MCP_HOST}:$
 export const claudeCodeMcpCommand = (token: string): string =>
   `claude mcp add --transport http modbux ${mcpUrl()} --header "Authorization: Bearer ${token}"`
 
+/** How the stdio shim is started on this machine. */
+export interface McpStdioLaunch {
+  /** The binary that runs the shim: `node` itself, or the Modbux binary run as node. */
+  executable: string
+  /** The shim script, `mcpStdio.js` beside the app's main bundle. */
+  script: string
+  /** Whether `executable` is the Modbux binary, which needs `ELECTRON_RUN_AS_NODE=1`. */
+  electronBinary: boolean
+}
+
+/** The shim's command line, for an MCP client that takes a command and arguments. */
+export const mcpStdioCommand = ({ executable, script, electronBinary }: McpStdioLaunch): string =>
+  `${electronBinary ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}"${executable}" "${script}"`
+
+/** The command that registers the stdio shim with Claude Code. The shim finds the token itself. */
+export const claudeCodeStdioCommand = ({
+  executable,
+  script,
+  electronBinary
+}: McpStdioLaunch): string =>
+  `claude mcp add modbux${electronBinary ? ' --env ELECTRON_RUN_AS_NODE=1' : ''} -- "${executable}" "${script}"`
+
 /**
  * What the MCP server is doing.
  *
@@ -59,4 +81,6 @@ export interface McpStatus extends McpSettings {
   /** Why the server is not listening while it is switched on. */
   error?: string
   url: string
+  /** The stdio shim's command lines. Absent when main was not told where the shim is. */
+  stdio?: { command: string; claudeCodeCommand: string }
 }

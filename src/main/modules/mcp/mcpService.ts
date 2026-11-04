@@ -1,6 +1,15 @@
 import type { Server } from 'http'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { MCP_PORT, McpRunState, McpSettings, McpStatus, mcpUrl } from '@shared'
+import {
+  claudeCodeStdioCommand,
+  MCP_PORT,
+  McpRunState,
+  McpSettings,
+  McpStatus,
+  McpStdioLaunch,
+  mcpStdioCommand,
+  mcpUrl
+} from '@shared'
 import { closeMcpHttpServer, listenMcpHttpServer, McpRequestHandler } from './httpServer'
 import { McpToolContext } from './registry'
 import { createMcpServer } from './server'
@@ -19,6 +28,8 @@ interface McpServiceParams {
    * tests pass 0 for a port the kernel picks, so two runs never collide.
    */
   port?: number
+  /** Where the stdio shim is, which the settings page shows as a command. */
+  stdioLaunch?: McpStdioLaunch
   createToken?: () => string
 }
 
@@ -59,6 +70,7 @@ export class McpService {
   private _version: string
   private _onStatus: (status: McpStatus) => void
   private _port: number
+  private _stdioLaunch: McpStdioLaunch | undefined
   private _createToken: () => string
 
   private _server: Server | undefined
@@ -72,6 +84,7 @@ export class McpService {
     version,
     onStatus = (): void => {},
     port = MCP_PORT,
+    stdioLaunch,
     createToken = createMcpToken
   }: McpServiceParams) {
     this._settingsStore = settings
@@ -80,6 +93,7 @@ export class McpService {
     this._version = version
     this._onStatus = onStatus
     this._port = port
+    this._stdioLaunch = stdioLaunch
     this._createToken = createToken
   }
 
@@ -89,7 +103,13 @@ export class McpService {
       ...this._settings,
       state: this._state,
       ...(this._error === undefined ? {} : { error: this._error }),
-      url: mcpUrl(this.port)
+      url: mcpUrl(this.port),
+      ...(this._stdioLaunch && {
+        stdio: {
+          command: mcpStdioCommand(this._stdioLaunch),
+          claudeCodeCommand: claudeCodeStdioCommand(this._stdioLaunch)
+        }
+      })
     }
   }
 
