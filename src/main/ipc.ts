@@ -238,7 +238,7 @@ export const initIpc: InitIpcFn = (app, state, client, server, windows, mcp) => 
   // Scan Unit ID Actions
   ipcHandle(
     'scan_unit_ids',
-    (_, scanUnitIdParameters) => client.scanUnitIds(scanUnitIdParameters),
+    async (_, scanUnitIdParameters) => void (await client.scanUnitIds(scanUnitIdParameters)),
     ScanUnitIDParametersSchema
   )
   ipcHandle('stop_scanning_unit_ids', () => client.stopScanningUnitIds())
@@ -246,8 +246,8 @@ export const initIpc: InitIpcFn = (app, state, client, server, windows, mcp) => 
   // Scan Registers Actions
   ipcHandle(
     'scan_registers',
-    (_, scanRegistersParameters: ScanRegistersParameters) =>
-      client.scanRegisters(scanRegistersParameters),
+    async (_, scanRegistersParameters: ScanRegistersParameters) =>
+      void (await client.scanRegisters(scanRegistersParameters)),
     ScanRegistersParametersSchema
   )
   ipcHandle('stop_scanning_registers', () => client.stopScanningRegisters())

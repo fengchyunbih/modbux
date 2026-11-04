@@ -44,7 +44,9 @@ type ScanUnitIdFn = ({
   address,
   length,
   registerTypes
-}: Omit<ScanUnitIDParameters, 'range' | 'timeout'> & { id: number }) => Promise<void>
+}: Omit<ScanUnitIDParameters, 'range' | 'timeout'> & { id: number }) => Promise<
+  ScanUnitIDResult | undefined
+>
 
 /**
  * What a write did with the port.
@@ -84,6 +86,33 @@ export interface ReadGroupError {
 export type ReadOutcome =
   | { read: false; reason: 'busy' | 'not_connected' | 'superseded' }
   | { read: true; data: RegisterData[]; groups: AddressGroup[]; errors: ReadGroupError[] }
+
+/**
+ * What a scan answers its caller, beside the events it sends the window.
+ *
+ * `scanned: false` means no request went out. `stopped` is true when a stop or
+ * a disconnect cut the scan short, so a caller can tell a range that was
+ * covered from one that was not.
+ */
+export type ScanRegistersOutcome =
+  | { scanned: false; reason: 'busy' | 'not_connected' }
+  | {
+      scanned: true
+      stopped: boolean
+      /** The rows the scan sent as `register_data`: non-zero words, or set bits. */
+      found: RegisterData[]
+      /** One message per chunk the device did not answer. */
+      errors: string[]
+    }
+
+export type ScanUnitIdsOutcome =
+  | { scanned: false; reason: 'busy' | 'not_connected' }
+  | {
+      scanned: true
+      stopped: boolean
+      /** Every unit id that was asked, answered or not. */
+      results: ScanUnitIDResult[]
+    }
 
 /**
  * An exception reply rather than silence.
@@ -1050,9 +1079,9 @@ export class ModbusClient {
   // user asked for, so it is taken here and neither dialog does it.
   //
   // Scan Unit ID
-  public scanUnitIds = async (params: ScanUnitIDParameters): Promise<void> => {
-    if (!this._requireConnected('scan')) return
-    if (!this._requireClient('scan', true)) return
+  public scanUnitIds = async (params: ScanUnitIDParameters): Promise<ScanUnitIdsOutcome> => {
+    if (!this._requireConnected('scan')) return { scanned: false, reason: 'not_connected' }
+    if (!this._requireClient('scan', true)) return { scanned: false, reason: 'busy' }
     this.stopPolling()
     await this._pollRead
 
@@ -1066,14 +1095,20 @@ export class ModbusClient {
     this._scansDone = 0
     this._scanProgressSentAt = 0
 
+    const results: ScanUnitIDResult[] = []
+    let stopped = false
     for (let id = range[0]; id <= range[1]; id++) {
-      await this._scanUnitIds({ id, ...params })
-      if (!this._clientState.scanningUnitIds) break
-      if (this._clientState.connectState !== 'connected') break
+      const result = await this._scanUnitIds({ id, ...params })
+      if (result) results.push(result)
+      if (!this._clientState.scanningUnitIds || this._clientState.connectState !== 'connected') {
+        stopped = result === undefined || id < range[1]
+        break
+      }
     }
 
     this._clientState.scanningUnitIds = false
     this._sendClientState()
+    return { scanned: true, stopped, results }
   }
 
   public stopScanningUnitIds = (): void => {
@@ -1101,7 +1136,7 @@ export class ModbusClient {
     for (const registerType of registerTypes) {
       if (!this._clientState.scanningUnitIds) {
         this._sendClientState()
-        return
+        return undefined
       }
 
       let errorMessage: string | undefined
@@ -1121,10 +1156,11 @@ export class ModbusClient {
 
     if (!this._clientState.scanningUnitIds) {
       this._sendClientState()
-      return
+      return undefined
     }
 
     this._sendUnitIdResult(result)
+    return result
   }
 
   //
@@ -1132,9 +1168,9 @@ export class ModbusClient {
   //
   //
   // Scan Registers
-  public scanRegisters = async (params: ScanRegistersParameters): Promise<void> => {
-    if (!this._requireConnected('scan')) return
-    if (!this._requireClient('scan', true)) return
+  public scanRegisters = async (params: ScanRegistersParameters): Promise<ScanRegistersOutcome> => {
+    if (!this._requireConnected('scan')) return { scanned: false, reason: 'not_connected' }
+    if (!this._requireClient('scan', true)) return { scanned: false, reason: 'busy' }
     this.stopPolling()
     await this._pollRead
 
@@ -1148,7 +1184,8 @@ export class ModbusClient {
     // register type selected, so a chunk of 2000 typed under coils reaches this
     // with holding registers selected.
     const { addressRange } = params
-    const length = Math.min(params.length, maxReadQuantity([this._appState.registerConfig.type]))
+    const type = params.registerType ?? this._appState.registerConfig.type
+    const length = Math.min(params.length, maxReadQuantity([type]))
 
     this._totalScans = Math.ceil((addressRange[1] - addressRange[0] + 1) / length)
     this._scansDone = 0
@@ -1157,19 +1194,30 @@ export class ModbusClient {
     this._clientState.scanningRegisters = true
     this._sendClientState()
 
+    const found: RegisterData[] = []
+    const errors: string[] = []
+    let stopped = false
     for (let address = addressRange[0]; address <= addressRange[1]; address += length) {
-      await this._scanRegister(address, length)
+      const chunk = await this._scanRegister(address, length, type)
+      found.push(...chunk.rows)
+      if (chunk.error) errors.push(chunk.error)
       this._countScanStep()
-      if (!this._clientState.scanningRegisters) break
-      if (this._clientState.connectState !== 'connected') break
+      if (!this._clientState.scanningRegisters || this._clientState.connectState !== 'connected') {
+        stopped = address + length <= addressRange[1]
+        break
+      }
     }
 
     this._clientState.scanningRegisters = false
     this._sendClientState()
+    return { scanned: true, stopped, found, errors }
   }
 
-  private _scanRegister = async (address: number, length: number): Promise<void> => {
-    const type = this._appState.registerConfig.type
+  private _scanRegister = async (
+    address: number,
+    length: number,
+    type: RegisterType
+  ): Promise<{ rows: RegisterData[]; error?: string }> => {
     // The last chunk alone, so the stride its caller walks is untouched. What
     // one response carries is clamped there, where the same number is the
     // stride and the progress divisor.
@@ -1189,9 +1237,10 @@ export class ModbusClient {
 
     this._transactionLog.log(transactionIdKey, errorMessage)
 
-    if (!data) return
+    if (!data) return { rows: [], error: errorMessage }
     data = data.filter((row) => (isBooleanRegister(type) ? row.bit : row.hex !== '0000'))
     this._sendData(data)
+    return { rows: data }
   }
 
   public stopScanningRegisters = (): void => {

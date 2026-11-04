@@ -6,7 +6,9 @@ import z from 'zod'
 export const ScanRegistersParametersSchema = z.object({
   addressRange: z.tuple([RegisterAddressSchema, RegisterAddressSchema]),
   length: z.number().int().positive(),
-  timeout: z.number().int().positive()
+  timeout: z.number().int().positive(),
+  /** The register type to scan. Without it the scan reads the client's own. */
+  registerType: RegisterTypeSchema.optional()
 })
 export type ScanRegistersParameters = z.infer<typeof ScanRegistersParametersSchema>
 

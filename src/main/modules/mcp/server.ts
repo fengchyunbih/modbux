@@ -1,9 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { McpTool, McpToolContext, registerTools } from './registry'
 import { registerResources } from './resources'
+import { registerPrompts } from './prompts'
 import { clientTools } from './tools/client'
 import { configFileTools } from './tools/configFiles'
 import { projectTools } from './tools/project'
+import { scanTools } from './tools/scan'
 import { serverTools } from './tools/servers'
 
 /**
@@ -16,7 +18,8 @@ export const TOOL_GROUPS: readonly (readonly McpTool[])[] = [
   clientTools,
   configFileTools,
   serverTools,
-  projectTools
+  projectTools,
+  scanTools
 ]
 
 const INSTRUCTIONS = `Modbux is a Modbus TCP/RTU client and server on the user's machine. The client tools drive the one Modbus client in the Modbux main window, and the user sees every change there. Addresses are PDU addresses (0-based); read the resource modbux://encoding for data type widths, byte order and address notation before mapping a point table. Config files travel as JSON text: the export tools answer the file, the import tools take it, and the schemas are the modbux://schema/* resources. Every tool needs the Modbux main window to be open.`
@@ -25,9 +28,10 @@ const INSTRUCTIONS = `Modbux is a Modbus TCP/RTU client and server on the user's
 export const createMcpServer = (context: McpToolContext, version: string): McpServer => {
   const server = new McpServer(
     { name: 'modbux', title: 'Modbux', version },
-    { capabilities: { tools: {}, resources: {} }, instructions: INSTRUCTIONS }
+    { capabilities: { tools: {}, resources: {}, prompts: {} }, instructions: INSTRUCTIONS }
   )
   registerTools(server, TOOL_GROUPS, context)
   registerResources(server, context)
+  registerPrompts(server)
   return server
 }

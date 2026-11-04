@@ -12,7 +12,16 @@ import type { RendererCommands } from '../rendererCommands'
  * hands in a stand-in for the slice rather than a whole `ModbusClient`.
  */
 export interface McpToolContext {
-  client: Pick<ModbusClient, 'read' | 'state' | 'lastConnectError'>
+  client: Pick<
+    ModbusClient,
+    | 'read'
+    | 'state'
+    | 'lastConnectError'
+    | 'scanRegisters'
+    | 'scanUnitIds'
+    | 'stopScanningRegisters'
+    | 'stopScanningUnitIds'
+  >
   appState: Pick<
     AppState,
     'connectionConfig' | 'registerConfig' | 'registerMapping' | 'readConfiguration'

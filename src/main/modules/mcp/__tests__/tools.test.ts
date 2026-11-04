@@ -42,7 +42,8 @@ describe('the tool list', () => {
   it('lists the client tools with their annotations', async () => {
     const client = await connectInMemory(fakeContext())
 
-    const { tools } = await client.listTools()
+    const { tools: listed } = await client.listTools()
+    const tools = listed.filter((tool) => !tool.name.startsWith('client_scan_'))
 
     const client4 = [
       'client_get_config',

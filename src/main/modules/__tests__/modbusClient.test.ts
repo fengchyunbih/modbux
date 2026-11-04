@@ -1279,6 +1279,131 @@ describe('ModbusClient', () => {
       expect(asked.length).toBe(8)
     })
 
+    describe('the outcome a scan answers', () => {
+      it('scanRegisters answers the rows it sent, for the register type it was given', async () => {
+        await connectClient()
+        appState.updateRegisterConfig({ type: 'holding_registers' })
+        mockModbusRTU.readInputRegisters.mockImplementation(async (address: number) => {
+          // Input registers 10 and 11 hold words; the rest are zero.
+          const data = [0, 0, 0, 0].map((_, i) => (address + i === 11 ? 0x1234 : 0))
+          const buffer = Buffer.alloc(8)
+          data.forEach((word, i) => buffer.writeUInt16BE(word, i * 2))
+          return { data, buffer }
+        })
+
+        const scanPromise = client.scanRegisters({
+          addressRange: [10, 13],
+          length: 4,
+          timeout: 1000,
+          registerType: 'input_registers'
+        })
+        await vi.advanceTimersByTimeAsync(1000)
+        const outcome = await scanPromise
+
+        expect(mockModbusRTU.readHoldingRegisters).not.toHaveBeenCalled()
+        expect(mockModbusRTU.readInputRegisters).toHaveBeenCalledWith(10, 4)
+        if (!outcome.scanned) throw new Error('the scan did not run')
+        expect(outcome.stopped).toBe(false)
+        expect(outcome.found.map((row) => [row.id, row.hex])).toEqual([[11, '1234']])
+        expect(getWindowCalls('register_data').flatMap((call) => call[1]).length).toBe(1)
+      })
+
+      it('scanRegisters answers the failed chunks and keeps scanning', async () => {
+        await connectClient()
+        appState.updateRegisterConfig({ type: 'holding_registers' })
+        mockModbusRTU.readHoldingRegisters.mockRejectedValue(new Error('Timed out'))
+
+        const scanPromise = client.scanRegisters({
+          addressRange: [0, 19],
+          length: 10,
+          timeout: 100
+        })
+        await vi.advanceTimersByTimeAsync(1000)
+        const outcome = await scanPromise
+
+        if (!outcome.scanned) throw new Error('the scan did not run')
+        expect(outcome.found).toEqual([])
+        expect(outcome.errors.length).toBe(2)
+        expect(mockModbusRTU.readHoldingRegisters).toHaveBeenCalledTimes(2)
+      })
+
+      it('scanRegisters answers stopped when a stop cut the range short', async () => {
+        await connectClient()
+        appState.updateRegisterConfig({ type: 'holding_registers' })
+        mockModbusRTU.readHoldingRegisters.mockImplementation(async () => {
+          client.stopScanningRegisters()
+          return { data: [0], buffer: Buffer.alloc(2) }
+        })
+
+        const scanPromise = client.scanRegisters({
+          addressRange: [0, 29],
+          length: 10,
+          timeout: 100
+        })
+        await vi.advanceTimersByTimeAsync(1000)
+        const outcome = await scanPromise
+
+        if (!outcome.scanned) throw new Error('the scan did not run')
+        expect(outcome.stopped).toBe(true)
+        expect(mockModbusRTU.readHoldingRegisters).toHaveBeenCalledTimes(1)
+      })
+
+      it('scanRegisters and scanUnitIds answer why nothing ran', async () => {
+        expect(
+          await client.scanRegisters({ addressRange: [0, 9], length: 10, timeout: 100 })
+        ).toEqual({
+          scanned: false,
+          reason: 'not_connected'
+        })
+        expect(
+          await client.scanUnitIds({
+            range: [1, 2],
+            address: 0,
+            length: 1,
+            registerTypes: ['holding_registers'],
+            timeout: 100
+          })
+        ).toEqual({ scanned: false, reason: 'not_connected' })
+
+        await connectClient()
+        client.write({
+          address: 0,
+          type: 'holding_registers',
+          value: 1,
+          dataType: 'uint16',
+          single: true
+        })
+        expect(
+          await client.scanRegisters({ addressRange: [0, 9], length: 10, timeout: 100 })
+        ).toEqual({ scanned: false, reason: 'busy' })
+      })
+
+      it('scanUnitIds answers the result of every unit it asked', async () => {
+        await connectClient()
+        mockModbusRTU.readHoldingRegisters.mockImplementation(async () => {
+          if (mockModbusRTU.setID.mock.calls.at(-1)?.[0] === 6) throw new Error('Timed out')
+          return { data: [0], buffer: Buffer.alloc(2) }
+        })
+
+        const scanPromise = client.scanUnitIds({
+          range: [5, 6],
+          address: 0,
+          length: 1,
+          registerTypes: ['holding_registers'],
+          timeout: 100
+        })
+        await vi.advanceTimersByTimeAsync(1000)
+        const outcome = await scanPromise
+
+        if (!outcome.scanned) throw new Error('the scan did not run')
+        expect(outcome.stopped).toBe(false)
+        expect(outcome.results.map((r) => [r.id, r.registerTypes])).toEqual([
+          [5, ['holding_registers']],
+          [6, []]
+        ])
+      })
+    })
+
     it('scanUnitIds refuses while disconnected', async () => {
       await client.scanUnitIds({
         range: [1, 3],

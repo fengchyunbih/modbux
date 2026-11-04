@@ -12,7 +12,7 @@ import {
   emptyRegisterMapping,
   RegisterMapping
 } from '@shared'
-import type { ReadOutcome } from '../../modbusClient'
+import type { ReadOutcome, ScanRegistersOutcome, ScanUnitIdsOutcome } from '../../modbusClient'
 import { McpToolContext } from '../registry'
 import { createMcpServer } from '../server'
 
@@ -35,6 +35,10 @@ export interface FakeContext extends McpToolContext {
   setMapping: (mapping: RegisterMapping) => void
   setReadConfiguration: (on: boolean) => void
   read: ReturnType<typeof vi.fn<() => Promise<ReadOutcome>>>
+  scanRegisters: ReturnType<typeof vi.fn<McpToolContext['client']['scanRegisters']>>
+  scanUnitIds: ReturnType<typeof vi.fn<McpToolContext['client']['scanUnitIds']>>
+  stopScanningRegisters: ReturnType<typeof vi.fn<() => void>>
+  stopScanningUnitIds: ReturnType<typeof vi.fn<() => void>>
   send: ReturnType<typeof vi.fn>
 }
 
@@ -59,6 +63,19 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
     groups: [],
     errors: []
   }))
+  const scanRegisters = vi.fn<McpToolContext['client']['scanRegisters']>(
+    async (): Promise<ScanRegistersOutcome> => ({
+      scanned: true,
+      stopped: false,
+      found: [],
+      errors: []
+    })
+  )
+  const scanUnitIds = vi.fn<McpToolContext['client']['scanUnitIds']>(
+    async (): Promise<ScanUnitIdsOutcome> => ({ scanned: true, stopped: false, results: [] })
+  )
+  const stopScanningRegisters = vi.fn<() => void>()
+  const stopScanningUnitIds = vi.fn<() => void>()
   const send = vi.fn(async (name: string) => {
     const answer = answers[name]
     if (answer) return answer()
@@ -69,6 +86,10 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
   return {
     client: {
       read,
+      scanRegisters,
+      scanUnitIds,
+      stopScanningRegisters,
+      stopScanningUnitIds,
       get state() {
         return clientState
       },
@@ -105,6 +126,10 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
       readConfiguration = on
     },
     read,
+    scanRegisters,
+    scanUnitIds,
+    stopScanningRegisters,
+    stopScanningUnitIds,
     send
   }
 }
