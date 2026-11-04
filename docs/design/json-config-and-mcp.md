@@ -73,27 +73,49 @@ Prompts：`point_table_to_client`、`point_table_to_simulator`、閉環測試。
 | 步驟 | 內容                                                                                                  | 服務的目標                       |
 | ---- | ----------------------------------------------------------------------------------------------------- | -------------------------------- |
 | 1    | 存檔／讀檔邏輯抽成 shared 函式與 store action，行為不變                                               | 4，也是 MCP 套用點表與匯出的基礎 |
-| 2    | Client 設定檔升版加入連線與讀取設定，Server 設定檔升版加入 port，含遷移與測試                         | 4                                |
+| 2    | Client 設定檔升版加入連線與讀取設定，Server 設定檔升版加入 port，兩者都預留 `byteSwap`；含遷移與測試  | 4                                |
 | 3    | Project 檔：一個 Client 設定、多台 Server 設定、serverMode 與 serialConfig，存成一份；UI 加匯出與匯入 | 4                                |
 | 4    | `_read` 回傳資料；比例與內插換算移到 shared                                                           | 1 的前提                         |
 | 5    | main 到 renderer 的命令通道                                                                           | 1、2 的前提                      |
-| 6    | MCP server 骨架與設定頁，加上 Client tools                                                            | 1                                |
-| 7    | Server tools 與 Project tools                                                                         | 2                                |
-| 8    | 閉環測試 prompt、stdio shim、scan tools                                                               | 3                                |
+| 6    | Byte swap：`byteSwap` 開放 `true`，Client 與 Server 的 byte order 選項改成 ABCD、CDAB、BADC、DCBA     | 1                                |
+| 7    | MCP server 骨架與設定頁，加上 Client tools                                                            | 1                                |
+| 8    | Server tools 與 Project tools                                                                         | 2                                |
+| 9    | 閉環測試 prompt、stdio shim、scan tools                                                               | 3                                |
 
-步驟 1 到 3 與步驟 4 到 5 互不依賴，可以平行進行。
+步驟 1 到 3 與步驟 4 到 5 互不依賴，可以平行進行。步驟 6 依賴步驟 2 預留的欄位。
+
+## Byte swap
+
+- **表示法。** 保留 `littleEndian`（word swap），新增 `byteSwap`（每個 16-bit word 內的高低 byte 對調）。兩者組合成四種順序：
+
+  | `littleEndian` | `byteSwap` | 順序 |
+  | -------------- | ---------- | ---- |
+  | `false`        | `false`    | ABCD |
+  | `true`         | `false`    | CDAB |
+  | `false`        | `true`     | BADC |
+  | `true`         | `true`     | DCBA |
+
+  `littleEndian` 不改名，舊檔與 localStorage 不需要遷移。
+
+- **步驟 2 先預留。** `byteSwap` 選填，沒寫等於 `false`，schema 只接受 `false`。設定檔的 schema 是 `z.object`，會丟掉不認得的欄位；預留之後，步驟 6 開放 `true` 時不必再升版，未開放的版本讀到 `true` 會報錯並拒絕載入，不會照 ABCD 或 CDAB 默默解錯。
+- **只套用在 32 位元與 64 位元類型：** `int32`、`uint32`、`float`、`unix`、`int64`、`uint64`、`double`、`datetime`。`int16`、`uint16`、`bitmap`、`utf8` 不受影響。
+- **要改的編解碼位置：** `createRegisters`（`shared/encoding.ts`）、`convertRegisterData`（`shared/conversion.ts`）、`foldWordIntoComposite`（`renderer/src/context/server.zustand.helpers.ts`）。byte 對調寫成一個 shared 函式，三處共用。
+- **工作量的大宗是傳遞路徑：** `byteSwap` 要沿 `littleEndian` 走過的路走一遍，包括 Client 的 registerConfig、`AppState`、Server store、`set_server_endianness` 的 schema、`registry.ts`、`valueGenerator.ts`、localStorage 的 schema、undo、設定檔。
+- **測試：** 四種順序在每個 32 與 64 位元類型上編碼後解碼還原；master 寫入單一 word 後重算的值；一條 e2e。
 
 ## 已知限制
 
 點表裡有這些內容時，tool 回報 rejected，不默默套用：
 
-- byte swap（BADC、DCBA），或同一份點表內 word order 不一致。目前不支援，見「已決定」。
+- 同一份點表內 byte order 不一致：一份設定只有一個 byte order。
+- 16 位元類型或 `utf8` 的 byte swap：`byteSwap` 只套用在 32 與 64 位元類型。
+- 步驟 6 完成前的 byte swap（BADC、DCBA）。
 - 同一條 RS485 上的多個 unit id：一份 Client 設定只有一個 unitId。
 
 ## 已決定
 
-1. **只留在 fork，不回饋 upstream。** CONTRIBUTING 要求新依賴先在 upstream 討論，這條在 fork 不適用。步驟 6 新增 `@modelcontextprotocol/sdk`；產生 JSON Schema 新增 `zod-to-json-schema` 或升級 zod v4，到該步驟時再選。
-2. **逐點 word order 與 byte swap 目前不做。** 格式維持整份一個 `littleEndian`。
+1. **只留在 fork，不回饋 upstream。** CONTRIBUTING 要求新依賴先在 upstream 討論，這條在 fork 不適用。步驟 7 新增 `@modelcontextprotocol/sdk`；產生 JSON Schema 新增 `zod-to-json-schema` 或升級 zod v4，到該步驟時再選。
+2. **Byte swap 要做，逐點 byte order 不做。** 步驟 2 預留欄位，步驟 6 實作，排在 MCP 之前；只套用在 32 與 64 位元類型。見「Byte swap」。
 3. **做 project 檔。** 排在步驟 3。
 4. **MCP 運作時 main window 必須開著。**
 5. **MCP port 固定為 `15502`。**
