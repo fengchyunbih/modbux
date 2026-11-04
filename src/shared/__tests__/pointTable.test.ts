@@ -554,6 +554,28 @@ describe('validatePointTable, across the table', () => {
     ])
   })
 
+  // A client reads one unit id, so a point naming another is still read at
+  // the address it shares.
+  it('rejects an overlap on a client table whatever unit id each point names', () => {
+    const report = validatePointTable(
+      [
+        point({ name: 'A', address: 100, dataType: 'uint32' }),
+        point({ name: 'B', address: 101, dataType: 'uint16', unitId: 1 })
+      ],
+      { target: 'client' }
+    )
+    expect(reasons(report)).toEqual([undefined, 'holding_registers 101 to 101 overlaps "A" at 100'])
+    expect(report.points[0]?.resolved?.unitId).toBe(report.unitId ?? 0)
+  })
+
+  it('takes the same address on two units of a server table', () => {
+    const report = validatePointTable(
+      [point({ address: 100, dataType: 'uint32' }), point({ address: 101, unitId: 1 })],
+      { target: 'server' }
+    )
+    expect(reasons(report)).toEqual([undefined, undefined])
+  })
+
   it('lets a rejected point block nothing', () => {
     const report = validatePointTable(
       [point({ address: 10, dataType: 'float32' }), point({ address: 10 })],

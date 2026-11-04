@@ -601,8 +601,11 @@ const spanOf = ({ address, width }: ResolvedPoint): [number, number] => [address
  * not apply to, its scaling, and on a server its value. Then, in table order,
  * against the points accepted before it: a byte order other than the table's,
  * a client point under another unit id than the table's, and a span that
- * overlaps one already accepted on the same unit and register type. A rejected
- * point sets nothing for the points after it.
+ * overlaps one already accepted on the same register type. On a server the
+ * overlap is per unit; a client reads one unit id, so its points overlap
+ * whatever unit id each names. A rejected point sets nothing for the points
+ * after it, and every accepted client point reports the unit id the table
+ * applies.
  */
 export const validatePointTable = (
   points: readonly (Point | ServerPoint)[],
@@ -645,7 +648,7 @@ export const validatePointTable = (
     const [start, end] = spanOf(resolved)
     const overlapping = accepted.find(
       (other) =>
-        other.resolved.unitId === resolved.unitId &&
+        (options.target === 'client' || other.resolved.unitId === resolved.unitId) &&
         other.resolved.registerType === resolved.registerType &&
         start < spanOf(other.resolved)[1] &&
         spanOf(other.resolved)[0] < end
@@ -659,10 +662,13 @@ export const validatePointTable = (
 
     if (resolved.byteOrder !== undefined) byteOrder = resolved.byteOrder
     if (options.target === 'client' && point.unitId !== undefined) unitId = point.unitId
-    if (options.target === 'client') resolved.unitId = unitId ?? resolved.unitId
     accepted.push({ name: point.name, resolved })
     return report(undefined, resolved)
   })
+
+  if (options.target === 'client' && unitId !== undefined) {
+    for (const { resolved } of accepted) resolved.unitId = unitId
+  }
 
   const acceptedCount = reports.filter((report) => report.status === 'accepted').length
   const table: PointTableReport = {
