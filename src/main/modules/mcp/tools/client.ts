@@ -1,4 +1,4 @@
-import { clientOwner, engineeringValue, RegisterData, RegisterType } from '@shared'
+import { byteOrderOf, clientOwner, engineeringValue, RegisterData, RegisterType } from '@shared'
 import type { ReadOutcome } from '../../modbusClient'
 import { RendererCommandError } from '../../rendererCommands'
 import { defineTool, McpTool, McpToolContext, toolError, toolResult } from '../registry'
@@ -191,7 +191,7 @@ const clientReadPoints = defineTool({
   name: 'client_read_points',
   title: 'Read the client points',
   description:
-    'Read once from the connected device and answer every address read, with the raw 16-bit word (or the bit), and for each address the mapping gives a data type: its comment, scaling factor and the engineering value as the Modbux grid shows it. With read configuration on, the mapped addresses are read; otherwise the register type, address and length the client is set to. Compare the words with the expected value to check word order and scaling.',
+    'Read once from the connected device and answer every address read, with the raw 16-bit word (or the bit), and for each address the mapping gives a data type: its comment, scaling factor and the engineering value as the Modbux grid shows it. With read configuration on, the mapped addresses are read; otherwise the register type, address and length the client is set to. Compare the words with the expected value to check the byte order and scaling.',
   inputSchema: {},
   annotations: { readOnlyHint: true, openWorldHint: true },
   run: async (_input, context) => {
@@ -202,7 +202,9 @@ const clientReadPoints = defineTool({
 
     // Read before the read goes out. A change to the type or the unit id
     // while it is out answers `superseded` rather than rows.
-    const { type, addressBase, littleEndian } = context.appState.registerConfig
+    const { registerConfig } = context.appState
+    const { type, addressBase } = registerConfig
+    const byteOrder = byteOrderOf(registerConfig)
     const { unitId } = context.appState.connectionConfig
 
     const outcome = await context.client.read()
@@ -223,7 +225,7 @@ const clientReadPoints = defineTool({
       unitId,
       registerType: type,
       addressBase: base,
-      byteOrder: littleEndian ? 'CDAB' : 'ABCD',
+      byteOrder,
       readConfiguration: context.appState.readConfiguration,
       rows,
       errors

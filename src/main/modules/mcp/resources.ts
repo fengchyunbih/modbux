@@ -10,8 +10,6 @@ export const CLIENT_CONFIG_RESOURCE_URI = 'modbux://client/config'
  * table and has to say which data type, address and byte order each point is.
  *
  * Each claim here is what `conversion.ts` and `encoding.ts` in `@shared` do.
- * The byte order section says ABCD and CDAB only, because those two are what a
- * configuration can hold until byte swap ships (design step 6).
  */
 export const ENCODING_NOTES = `# How Modbux encodes values
 
@@ -58,18 +56,22 @@ addresses after it. A mapping gives a data type to the first address only.
 
 ## Byte order
 
-Within one 16-bit word the high byte is always first. Across the words of a
-32-bit or 64-bit value the client has one setting, \`registerConfig.littleEndian\`:
+A client configuration has one byte order for every point, held as two flags
+in \`registerConfig\`: \`littleEndian\` reverses the order of the words, and
+\`byteSwap\` swaps the two bytes inside each word. \`client_read_points\`
+answers the order by name as \`byteOrder\`.
 
-| littleEndian | Order | 32-bit value 0x12345678 on the wire |
-| ------------ | ----- | ----------------------------------- |
-| false        | ABCD  | word 0 = 0x1234, word 1 = 0x5678 |
-| true         | CDAB  | word 0 = 0x5678, word 1 = 0x1234 |
+| Order | littleEndian | byteSwap | 32-bit 0x12345678, words 0 and 1 | 64-bit 0x1122334455667788, words 0 to 3 |
+| ----- | ------------ | -------- | -------------------------------- | ---------------------------------------- |
+| ABCD  | false        | false    | 0x1234 0x5678                    | 0x1122 0x3344 0x5566 0x7788              |
+| CDAB  | true         | false    | 0x5678 0x1234                    | 0x7788 0x5566 0x3344 0x1122              |
+| BADC  | false        | true     | 0x3412 0x7856                    | 0x2211 0x4433 0x6655 0x8877              |
+| DCBA  | true         | true     | 0x7856 0x3412                    | 0x8877 0x6655 0x4433 0x2211              |
 
-For a 64-bit value, \`true\` reverses all four words. 16-bit types and utf8 are
-not affected. One configuration has one byte order for every point.
-
-BADC and DCBA (a byte swap inside each word) cannot be configured yet.
+The order applies to int32, uint32, float, unix, int64, uint64, double and
+datetime. int16, uint16, bitmap and utf8 read the same in every order: a
+one-register value has no words to reverse and its bytes are not swapped, and
+a utf8 string is read high byte first, register by register.
 
 ## Scaling
 
@@ -81,8 +83,8 @@ value's own decimals for float and double.
 ## Checking a byte order with a read
 
 Read a point whose value you know (a voltage near 230, a frequency near 50).
-If the value is absurd and the swapped word pair would give the known value,
-the byte order is the other one.
+If the value is absurd, decode the raw words of that point in the other three
+orders; the one that gives the known value is the device's.
 `
 
 /** The two resources this step ships: the encoding notes and the client config. */

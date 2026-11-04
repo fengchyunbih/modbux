@@ -4,22 +4,38 @@
 // a stand-in client and stand-in renderer commands.
 import { describe, expect, it } from 'vitest'
 import z from 'zod'
-import { convertBitData, convertRegisterData, emptyRegisterMapping } from '@shared'
+import {
+  ByteOrder,
+  ByteOrderFlags,
+  ByteOrderSchema,
+  byteOrderFlags,
+  convertBitData,
+  convertRegisterData,
+  createRegisters,
+  emptyRegisterMapping
+} from '@shared'
 import { RendererCommandError } from '../../rendererCommands'
 import { defineTool, MAIN_WINDOW_CLOSED, toolResult, WRITES_NOT_ALLOWED } from '../registry'
-import { CLIENT_CONFIG_RESOURCE_URI, ENCODING_RESOURCE_URI } from '../resources'
+import { CLIENT_CONFIG_RESOURCE_URI, ENCODING_NOTES, ENCODING_RESOURCE_URI } from '../resources'
 import { CONFIG, connectInMemory, fakeContext, jsonOf, textOf } from './fakeContext'
 
 /** Registers as modbus-serial answers them, converted the way `_read` does. */
-const holdingRows = (address: number, words: number[], littleEndian = false) => {
+const holdingRows = (
+  address: number,
+  words: number[],
+  order: ByteOrderFlags = { littleEndian: false, byteSwap: false }
+) => {
   const buffer = Buffer.alloc(words.length * 2)
   words.forEach((word, i) => buffer.writeUInt16BE(word, i * 2))
-  return convertRegisterData(
-    { data: words, buffer },
-    address,
-    { littleEndian, byteSwap: false },
-    false
-  )
+  return convertRegisterData({ data: words, buffer }, address, order, false)
+}
+
+/** The words the encoding notes give for 0x12345678 in each order. */
+const UINT32_WORDS: Record<ByteOrder, number[]> = {
+  ABCD: [0x1234, 0x5678],
+  CDAB: [0x5678, 0x1234],
+  BADC: [0x3412, 0x7856],
+  DCBA: [0x7856, 0x3412]
 }
 
 describe('the tool list', () => {
@@ -246,15 +262,15 @@ describe('client_read_points', () => {
     ])
   })
 
-  it('decodes in the client’s word order', async () => {
+  it.each(ByteOrderSchema.options)('decodes and names the byte order %s', async (order) => {
     const context = connected()
-    context.appState.registerConfig.littleEndian = true
+    Object.assign(context.appState.registerConfig, byteOrderFlags(order))
     const mapping = emptyRegisterMapping()
     mapping.holding_registers[0] = { dataType: 'uint32' }
     context.setMapping(mapping)
     context.read.mockResolvedValue({
       read: true,
-      data: holdingRows(0, [0x0001, 0x0002], true),
+      data: holdingRows(0, UINT32_WORDS[order], byteOrderFlags(order)),
       groups: [[0, 2]],
       errors: []
     })
@@ -262,8 +278,8 @@ describe('client_read_points', () => {
 
     const answer = jsonOf(await client.callTool({ name: 'client_read_points', arguments: {} }))
 
-    expect(answer.byteOrder).toBe('CDAB')
-    expect((answer.rows as { value?: number }[])[0]?.value).toBe(0x00020001)
+    expect(answer.byteOrder).toBe(order)
+    expect((answer.rows as { value?: number }[])[0]?.value).toBe(0x12345678)
   })
 
   it('answers a bit for coils', async () => {
@@ -431,6 +447,15 @@ describe('the resources', () => {
         text: expect.stringContaining('| float     | 2 |')
       }
     ])
+  })
+
+  // The table is prose an agent acts on, so its words are checked against the encoder.
+  it.each(ByteOrderSchema.options)('gives the words createRegisters lays out for %s', (order) => {
+    const words = createRegisters('uint32', 0x12345678, byteOrderFlags(order))
+    const hex = words.map((word) => `0x${word.toString(16).padStart(4, '0')}`).join(' ')
+
+    expect(ENCODING_NOTES).toContain(`| ${order}  |`)
+    expect(ENCODING_NOTES).toMatch(new RegExp(`\\| ${order} .*\\| ${hex} `))
   })
 
   it('answers the client config as JSON', async () => {
