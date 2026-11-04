@@ -46,60 +46,79 @@ export type ServerConfigImport =
   | (Extract<ConfigFileResult<ServerConfig>, { ok: true }> & { portRefused?: number })
   | Extract<ConfigFileResult<ServerConfig>, { ok: false }>
 
+/** What `writeServerConfig` could not do, with the rest of the file written anyway. */
+export interface ServerConfigWrite {
+  failure?: string
+  portRefused?: number
+}
+
+/**
+ * Replaces what server `uuid` holds with `config`, and selects it.
+ *
+ * Not recorded: the callers wrap it in `asOneServerStep`, which is one step
+ * for the Open button and one per server for the project import.
+ *
+ * A server the config does not name a unit of is reset first, so whatever the
+ * previous config left on it would not answer a master after this one is
+ * loaded. A port the config carries goes through `setPort`, which refuses a
+ * port another server holds and leaves main to refuse the rest. A refused port
+ * does not stop the rest of the config. In RTU mode the port is not applied,
+ * because no TCP server listens.
+ */
+export const writeServerConfig = async (
+  uuid: string,
+  config: ServerConfig
+): Promise<ServerConfigWrite> => {
+  useServerZustand.getState().setSelectedUuid(uuid)
+  const serverZustand = useServerZustand.getState()
+  const write: ServerConfigWrite = {}
+
+  try {
+    const port = config.port
+    const listening = serverZustand.servers[uuid]?.port
+    if (port !== undefined && serverZustand.serverMode !== 'rtu' && String(port) !== listening) {
+      if (!(await serverZustand.setPort(String(port)))) write.portRefused = port
+    }
+
+    await serverZustand.resetServer(uuid)
+    serverZustand.setName(config.name)
+    serverZustand.setLittleEndian(config.littleEndian)
+
+    for (const unitId of UnitIdStringSchema.options) {
+      const serverRegisters = config.serverRegistersPerUnit[unitId]
+      if (!serverRegisters) continue
+      if (!checkHasConfig(serverRegisters)) continue
+      serverZustand.replaceServerRegisters(unitId, serverRegisters)
+    }
+  } catch (error) {
+    write.failure = error instanceof Error ? error.message : String(error)
+  } finally {
+    // `init` runs either way: after a throw it hands main the configuration
+    // the store holds, which is the one on screen.
+    await serverZustand.init(uuid)
+  }
+  return write
+}
+
 /**
  * Reads a server config file into the selected server, as one step to undo.
  *
- * A file that does not parse changes nothing. A file that does replaces what
- * the server holds: a unit the file does not name is not written over on the
- * way in, so whatever the previous config left on it would answer a master
- * after this one is loaded, and the reset takes both sides down to nothing
- * first.
- *
- * A v4 file carries the port, and it goes through `setPort`, which refuses a
- * port another server holds and leaves main to refuse the rest. A refused
- * port does not stop the rest of the file, and the answer names it. A file
- * migrated from v3 carries none, and the server keeps the port it has. In RTU
- * mode the port is not applied, because no TCP server listens.
+ * A file that does not parse changes nothing, and the parse comes before the
+ * reset because the reset reaches main and then clears the store. A file
+ * migrated from v3 carries no port, and the server keeps the port it has.
  */
 export const importServerConfig = async (json: string): Promise<ServerConfigImport> => {
-  // Before the reset, because the reset reaches main and then clears the
-  // store: reset first, and a client config file or malformed JSON cost the
-  // configuration on screen before anything had read the file.
   const parsed = parseServerConfig(json)
   if (!parsed.ok) return parsed
   const { config } = parsed
 
-  const serverZustand = useServerZustand.getState()
-  const uuid = serverZustand.selectedUuid
-  let failure: string | undefined
-  let portRefused: number | undefined
-
+  const uuid = useServerZustand.getState().selectedUuid
+  let write: ServerConfigWrite = {}
   await asOneServerStep(uuid, async () => {
-    try {
-      const port = config.port
-      const listening = serverZustand.servers[uuid]?.port
-      if (port !== undefined && serverZustand.serverMode !== 'rtu' && String(port) !== listening) {
-        if (!(await serverZustand.setPort(String(port)))) portRefused = port
-      }
-
-      await serverZustand.resetServer(uuid)
-      serverZustand.setName(config.name)
-      serverZustand.setLittleEndian(config.littleEndian)
-
-      for (const unitId of UnitIdStringSchema.options) {
-        const serverRegisters = config.serverRegistersPerUnit[unitId]
-        if (!serverRegisters) continue
-        if (!checkHasConfig(serverRegisters)) continue
-        serverZustand.replaceServerRegisters(unitId, serverRegisters)
-      }
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error)
-    } finally {
-      // `init` runs either way: after a throw it hands main the configuration
-      // the store holds, which is the one on screen.
-      await serverZustand.init(uuid)
-    }
+    write = await writeServerConfig(uuid, config)
   })
 
-  return failure === undefined ? { ...parsed, portRefused } : { ok: false, error: failure }
+  return write.failure === undefined
+    ? { ...parsed, portRefused: write.portRefused }
+    : { ok: false, error: write.failure }
 }

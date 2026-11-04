@@ -38,6 +38,38 @@ const REFUSALS = {
 } as const
 
 /**
+ * Writes a parsed client config into the store, as one step to undo, and
+ * answers what `writeClientConfiguration` answered.
+ *
+ * A config without connection or read settings, which one migrated from v2 is,
+ * keeps the ones the client holds. The project import calls this too.
+ */
+export const applyClientConfig = async (
+  config: RegisterMapConfig
+): Promise<Awaited<ReturnType<typeof writeClientConfiguration>>> => {
+  const current = useClientZustand.getState()
+  // Asserted rather than annotated: an annotated `let` narrows to its
+  // initializer, and the assignment inside the action is one control flow
+  // analysis does not follow.
+  let outcome = 'refused' as Awaited<ReturnType<typeof writeClientConfiguration>>
+  await asOneClientStep(async () => {
+    outcome = await writeClientConfiguration({
+      name: config.name || current.name,
+      connectionConfig: config.connectionConfig ?? current.connectionConfig,
+      registerConfig: {
+        ...(config.registerConfig ?? current.registerConfig),
+        littleEndian: config.littleEndian
+      },
+      registerMapping: config.registerMapping
+    })
+  })
+  return outcome
+}
+
+/** Why `applyClientConfig` was refused, as the sentence an Open button shows. */
+export const clientRefusal = (outcome: 'refused' | 'refused-connected'): string => REFUSALS[outcome]
+
+/**
  * Reads a client config file into the store, as one step to undo.
  *
  * A file that does not parse changes nothing. A file that does sets the byte
@@ -53,23 +85,9 @@ export const importClientConfig = async (
   if (!parsed.ok) return parsed
   const { config } = parsed
 
-  const current = useClientZustand.getState()
-  // Asserted rather than annotated: an annotated `let` narrows to its
-  // initializer, and the assignment inside the action is one control flow
-  // analysis does not follow.
-  let outcome = 'refused' as Awaited<ReturnType<typeof writeClientConfiguration>>
+  let outcome: Awaited<ReturnType<typeof applyClientConfig>>
   try {
-    await asOneClientStep(async () => {
-      outcome = await writeClientConfiguration({
-        name: config.name || current.name,
-        connectionConfig: config.connectionConfig ?? current.connectionConfig,
-        registerConfig: {
-          ...(config.registerConfig ?? current.registerConfig),
-          littleEndian: config.littleEndian
-        },
-        registerMapping: config.registerMapping
-      })
-    })
+    outcome = await applyClientConfig(config)
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }

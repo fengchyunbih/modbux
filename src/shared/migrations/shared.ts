@@ -1,5 +1,6 @@
 import z, { type ZodError, type ZodIssue } from 'zod'
 import { ReservedByteSwapSchema } from '../types/byteSwap'
+import { PROJECT_KIND } from '../types/project'
 import { RegisterAddressKeySchema } from '../types/ranges'
 import { RegisterMapValueSchema } from '../types/client'
 import {
@@ -100,6 +101,12 @@ export function refuseOtherSidesConfig(
   parsed: Record<string, unknown>,
   side: 'client' | 'server'
 ): void {
+  if (parsed.kind === PROJECT_KIND) {
+    throw new Error(
+      'This is a project file. Open it with Open project on the home screen, not on the ' +
+        `${side}.`
+    )
+  }
   const isServerConfig = 'serverRegistersPerUnit' in parsed || 'serverRegisters' in parsed
   if (side === 'server' && !isServerConfig) {
     throw new Error(

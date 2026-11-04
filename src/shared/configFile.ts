@@ -63,7 +63,11 @@ export interface ClientConfigSource {
  * `setRegisterMapping` deletes an entry set to `none`, so one that is still
  * there maps nothing.
  */
-export const serializeClientConfig = (source: ClientConfigSource): string => {
+export const serializeClientConfig = (source: ClientConfigSource): string =>
+  JSON.stringify(buildClientConfig(source), null, 2)
+
+/** The client config object Save writes, shared with the project file that embeds it. */
+export const buildClientConfig = (source: ClientConfigSource): RegisterMapConfig => {
   const registerMapping = structuredClone(source.registerMapping)
   for (const registerType of RegisterTypeSchema.options) {
     const entries = registerMapping[registerType]
@@ -73,7 +77,7 @@ export const serializeClientConfig = (source: ClientConfigSource): string => {
   }
 
   const { littleEndian, ...readSettings } = source.registerConfig
-  const config: RegisterMapConfig = {
+  return {
     version: CURRENT_CLIENT_CONFIG_VERSION,
     modbuxVersion: source.modbuxVersion,
     name: source.name,
@@ -83,7 +87,6 @@ export const serializeClientConfig = (source: ClientConfigSource): string => {
     registerConfig: readSettings,
     registerMapping
   }
-  return JSON.stringify(config, null, 2)
 }
 
 /** What one server in the store holds that a server config file carries. */
@@ -100,13 +103,17 @@ export interface ServerConfigSource {
  *
  * A unit holding nothing is left out, so a file names the units it configures.
  */
-export const serializeServerConfig = (source: ServerConfigSource): string => {
+export const serializeServerConfig = (source: ServerConfigSource): string =>
+  JSON.stringify(buildServerConfig(source), null, 2)
+
+/** The server config object Save writes, shared with the project file that embeds it. */
+export const buildServerConfig = (source: ServerConfigSource): ServerConfig => {
   const serverRegistersPerUnit: ServerRegistersPerUnit = {}
   for (const [unitId, registers] of Object.entries(source.registers)) {
     if (checkHasConfig(registers)) serverRegistersPerUnit[unitId] = registers
   }
 
-  const config: ServerConfig = {
+  return {
     version: CURRENT_SERVER_CONFIG_VERSION,
     modbuxVersion: source.modbuxVersion,
     name: source.name,
@@ -115,5 +122,4 @@ export const serializeServerConfig = (source: ServerConfigSource): string => {
     port: source.port,
     serverRegistersPerUnit
   }
-  return JSON.stringify(config, null, 2)
 }

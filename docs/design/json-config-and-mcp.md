@@ -137,3 +137,9 @@ Prompts：`point_table_to_client`、`point_table_to_simulator`、閉環測試。
    - 開 v3 Client 檔時，連線設定與目前不同而 Client 正連著線，整份拒絕；main 拒絕其中一個欄位或 mapping 時，已寫入的欄位還原。
    - 開 v4 Server 檔時，port 走 `setPort`；被拒絕時照樣載入其餘內容並提示。RTU 模式不套用 port。復原會連 port 一起還原。
    - `byteSwap` 不是 `false` 的檔，不論宣稱哪個版本，都在遷移前拒絕。
+8. **步驟 3 的 project 檔格式。** `kind: "project"`、自己的 `version`（目前 1），內含一份 Client 檔（v3）、一個 `servers` 陣列（每台是 v4 Server 檔，主 Server 在第一個）、`selectedServer`（索引）、`serverMode`、`serialConfig`。內嵌的各部分用 `migrateClientConfig` 與 `migrateServerConfig` 遷移，project 檔不複製它們的歷史；只有 envelope 變動才升 project 的版本。Client 檔與 Server 檔沒有 `kind`；開 project 檔時，兩邊的 Open 都以名稱拒絕，project 的 Open 也會指出收到的是 Client 檔還是 Server 檔。
+   - **Server 是取代，不是合併。** 主 Server 套用檔內第一台，其餘現有 Server 先刪除（釋出 port），檔內其餘的新建。Server 的 uuid 不存進檔案；port 被拒絕時照樣載入並提示，main 不肯建立的 Server 計數後略過。
+   - **復原粒度。** Client 與 Server 的復原堆疊分開，一個步驟跨不過兩個 store。一次匯入是一個 Client 步驟加上每台被建立、取代或刪除的 Server 各一個步驟。`serverMode` 與 `serialConfig` 不可復原，原本的切換按鈕就不可復原。
+   - **匯入順序。** 先驗證整份檔，再套用 Client；Client 因連線中且連線設定不同而被拒絕時，整份不動。目前是 RTU 模式時先切回 TCP 再處理 Server，最後才套用 serial 設定並切到檔內的模式。
+   - **按鈕放在首頁。** 「Save project」與「Open project」在首頁 Server／Client 按鈕下方，因為 project 跨 Client 與 Server。Server 視圖拆成獨立視窗時，主視窗的 Server store 是過期的，兩個按鈕改為回報錯誤。
+   - **不存的資料。** Server 的 `unitId`（畫面上選的 unit）不在 Server 檔裡，project 也不存。

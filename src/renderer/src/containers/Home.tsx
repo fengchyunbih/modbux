@@ -14,6 +14,8 @@ import { useDataZustand } from '@renderer/context/data.zustand'
 import { sendEvent } from '@renderer/events'
 import Ploxc from '@renderer/svg/Ploxc'
 import GithubCat from '@renderer/svg/GithubCat'
+import OpenProjectButton from '@renderer/components/shared/OpenProjectButton'
+import SaveProjectButton from '@renderer/components/shared/SaveProjectButton'
 
 //
 //
@@ -173,22 +175,28 @@ const Home = meme(() => {
             opacity: 0.1
           })}
         />
-        <Box sx={() => ({ display: 'flex', gap: 3 })}>
-          <ServerButton />
-          <Button
-            data-testid="home-split-btn"
-            aria-label="Open server in separate window"
-            title="Open server in separate window"
-            onClick={() => {
-              sendEvent('open_server_window')
-            }}
-          >
-            <CallSplit
-              sx={(theme) => ({ color: theme.palette.background.default })}
-              fontSize="large"
-            />
-          </Button>
-          <ClientButton />
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+          <Box sx={() => ({ display: 'flex', gap: 3 })}>
+            <ServerButton />
+            <Button
+              data-testid="home-split-btn"
+              aria-label="Open server in separate window"
+              title="Open server in separate window"
+              onClick={() => {
+                sendEvent('open_server_window')
+              }}
+            >
+              <CallSplit
+                sx={(theme) => ({ color: theme.palette.background.default })}
+                fontSize="large"
+              />
+            </Button>
+            <ClientButton />
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <SaveProjectButton />
+            <OpenProjectButton />
+          </Box>
         </Box>
         <PloxcLogo />
         <Version />
