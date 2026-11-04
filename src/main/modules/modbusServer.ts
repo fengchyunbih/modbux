@@ -8,7 +8,9 @@ import {
   CreateServerParams,
   AddRegisterParams,
   StartRtuServerParams,
-  ServerEndianness
+  ServerEndianness,
+  NumberRegisters,
+  UnitIdString
 } from '@shared'
 import { Windows } from '../windows'
 import { ServerRegistry } from './modbusServer/registry'
@@ -25,7 +27,7 @@ interface ServerParams {
  * `ServerRegistry` holds the registers, `TcpServers` holds the listeners,
  * `RtuServer` holds the serial port, and `createVector` is what the two
  * transports ask the registry through. Everything public here is what
- * `main/ipc.ts` calls; a method that names more than one part is one this
+ * `main/ipc.ts` calls, apart from `readRegisters`, which the MCP tools call; a method that names more than one part is one this
  * class answers itself, and the rest hand their parameters over.
  */
 export class ModbusServer {
@@ -58,6 +60,22 @@ export class ModbusServer {
     this._rtu = new RtuServer({ windows, registry: this._registry })
     this._tcp = new TcpServers({ windows, registry: this._registry })
   }
+
+  /**
+   * The words `count` registers from `address` hold, as a master's read gets
+   * them: 0 where nothing was written, as the vector answers.
+   */
+  public readRegisters = (
+    uuid: string,
+    unitId: UnitIdString,
+    registerType: NumberRegisters,
+    address: number,
+    count: number
+  ): number[] =>
+    Array.from(
+      { length: count },
+      (_, offset) => this._registry.read(uuid, unitId, registerType, address + offset) ?? 0
+    )
 
   /** Binds a listener for a uuid, and answers the port it took. */
   public createServer = (params: CreateServerParams): Promise<number | undefined> =>

@@ -10,6 +10,7 @@ import {
   defaultConnectionConfig,
   defaultRegisterConfig,
   emptyRegisterMapping,
+  NumberRegisters,
   RegisterMapping
 } from '@shared'
 import type {
@@ -41,6 +42,14 @@ export interface FakeContext extends McpToolContext {
   setMapping: (mapping: RegisterMapping) => void
   setReadConfiguration: (on: boolean) => void
   setAllowWrites: (allowed: boolean) => void
+  /** Put words in the stand-in server, from `address` on. */
+  setServerWords: (
+    uuid: string,
+    unitId: string,
+    registerType: NumberRegisters,
+    address: number,
+    words: number[]
+  ) => void
   read: ReturnType<typeof vi.fn<() => Promise<ReadOutcome>>>
   scanRegisters: ReturnType<typeof vi.fn<McpToolContext['client']['scanRegisters']>>
   scanUnitIds: ReturnType<typeof vi.fn<McpToolContext['client']['scanUnitIds']>>
@@ -63,6 +72,18 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
   let registerMapping: RegisterMapping | undefined = emptyRegisterMapping()
   let readConfiguration = false
   let allowWrites = false
+  // What the stand-in server holds, keyed `uuid/unitId/registerType/address`;
+  // an address with no entry reads 0, as the real one does.
+  const serverWords = new Map<string, number>()
+  const wordKey = (uuid: string, unitId: string, type: string, address: number): string =>
+    `${uuid}/${unitId}/${type}/${address}`
+  const readRegisters = vi.fn<McpToolContext['server']['readRegisters']>(
+    (uuid, unitId, registerType, address, count) =>
+      Array.from(
+        { length: count },
+        (_, offset) => serverWords.get(wordKey(uuid, unitId, registerType, address + offset)) ?? 0
+      )
+  )
   const registerConfig = { ...defaultRegisterConfig }
   const connectionConfig = { ...defaultConnectionConfig, unitId: 7 }
 
@@ -121,6 +142,7 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
       }
     },
     rendererCommands: { send: send as unknown as McpToolContext['rendererCommands']['send'] },
+    server: { readRegisters },
     mainWindowOpen: () => mainWindowOpen,
     allowWrites: () => allowWrites,
     setClientState: (state) => {
@@ -140,6 +162,11 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
     },
     setAllowWrites: (allowed) => {
       allowWrites = allowed
+    },
+    setServerWords: (uuid, unitId, registerType, address, words) => {
+      for (const [offset, word] of words.entries()) {
+        serverWords.set(wordKey(uuid, unitId, registerType, address + offset), word)
+      }
     },
     read,
     scanRegisters,

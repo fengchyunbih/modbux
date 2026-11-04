@@ -2,18 +2,12 @@ import z from 'zod'
 import {
   acceptedPoints,
   AddressNotationSchema,
-  byteOrderFlags,
-  ByteOrder,
   ByteOrderSchema,
-  createRegisters,
-  createStringRegisters,
   engineeringToRaw,
   PointAddressSchema,
   PointInterpolationSchema,
   PortSchema,
-  RegisterParams,
   RegisterType,
-  reorderBytes,
   resolveAddress,
   ServerPointSchema,
   ServerRegisters,
@@ -21,8 +15,8 @@ import {
   ServerValues,
   ServerValueWrite,
   serverUnitsOf,
-  toExact64Bits,
   UnitIdSchema,
+  UnitIdString,
   UnitIdStringSchema,
   validatePointTable,
   registerWidth
@@ -151,41 +145,6 @@ const serverApplyPointTable = defineTool({
 //
 // server_get_values
 
-/** The words a 64 bit integer holds, which a JS number cannot carry exactly. */
-const exact64BitWords = (
-  dataType: 'int64' | 'uint64',
-  value: number | string,
-  order: ByteOrder
-): number[] | undefined => {
-  const composite = toExact64Bits(value)
-  if (composite === undefined) return undefined
-  const buffer = Buffer.alloc(8)
-  if (dataType === 'int64') buffer.writeBigInt64BE(composite)
-  else buffer.writeBigUInt64BE(composite)
-  const ordered = Buffer.from(reorderBytes(buffer, byteOrderFlags(order)))
-  return [0, 2, 4, 6].map((offset) => ordered.readUInt16BE(offset))
-}
-
-/** The words a register puts on the wire, in the server's byte order. */
-const wordsOf = (
-  params: RegisterParams,
-  value: number | string,
-  order: ByteOrder
-): number[] | undefined => {
-  const { dataType } = params
-  switch (dataType) {
-    case 'none':
-      return undefined
-    case 'utf8':
-      return createStringRegisters(params.stringValue ?? '', registerWidth('utf8', params.length))
-    case 'int64':
-    case 'uint64':
-      return exact64BitWords(dataType, value, order)
-    default:
-      return createRegisters(dataType, Number(value), byteOrderFlags(order))
-  }
-}
-
 /** One register as `server_get_values` answers it. */
 interface ServerRegisterRow {
   registerType: RegisterType
@@ -194,12 +153,26 @@ interface ServerRegisterRow {
   dataType?: string
   /** What the register holds now: the raw value, decoded in the server's byte order. */
   value: number | string | boolean
-  /** The 16 bit words the server answers a read with. */
+  /**
+   * The 16 bit words the server answers a read with, read from main's server
+   * rather than encoded again from `value`: the store keeps a float rounded to
+   * three decimals and a datetime as its packed composite.
+   */
   words?: number[]
   generator?: { min: number; max: number; intervalMs: number }
 }
 
-const rowsOf = (registers: ServerRegisters, order: ByteOrder): ServerRegisterRow[] => {
+/** Where a unit's registers are, so their words can be read from main's server. */
+interface UnitAt {
+  context: McpToolContext
+  uuid: string
+  unitId: UnitIdString
+}
+
+const rowsOf = (
+  registers: ServerRegisters,
+  { context, uuid, unitId }: UnitAt
+): ServerRegisterRow[] => {
   const rows: ServerRegisterRow[] = []
   for (const registerType of ['coils', 'discrete_inputs'] as const) {
     for (const [address, entry] of Object.entries(registers[registerType])) {
@@ -213,14 +186,20 @@ const rowsOf = (registers: ServerRegisters, order: ByteOrder): ServerRegisterRow
   }
   for (const registerType of ['input_registers', 'holding_registers'] as const) {
     for (const [address, { value, params }] of Object.entries(registers[registerType])) {
-      const words = wordsOf(params, value, order)
+      const words = context.server.readRegisters(
+        uuid,
+        unitId,
+        registerType,
+        Number(address),
+        registerWidth(params.dataType, params.length)
+      )
       rows.push({
         registerType,
         address: Number(address),
         dataType: params.dataType,
         ...(params.comment ? { comment: params.comment } : {}),
         value: params.dataType === 'utf8' ? (params.stringValue ?? '') : value,
-        ...(words ? { words } : {}),
+        words,
         ...(params.min !== undefined && params.max !== undefined && params.interval !== undefined
           ? { generator: { min: params.min, max: params.max, intervalMs: params.interval } }
           : {})
@@ -248,11 +227,12 @@ const serverGetValues = defineTool({
       })
       const units = Object.entries(values.units)
         .filter(([unitId]) => input.unitId === undefined || unitId === String(input.unitId))
-        .flatMap(([unitId, registers]) =>
-          registers
-            ? [{ unitId: Number(unitId), registers: rowsOf(registers, values.byteOrder) }]
-            : []
-        )
+        .flatMap(([key, registers]) => {
+          if (!registers) return []
+          const unitId = UnitIdStringSchema.parse(key)
+          const at = { context, uuid: values.uuid, unitId }
+          return [{ unitId: Number(unitId), registers: rowsOf(registers, at) }]
+        })
         .sort((a, b) => a.unitId - b.unitId)
       return toolResult({
         uuid: values.uuid,

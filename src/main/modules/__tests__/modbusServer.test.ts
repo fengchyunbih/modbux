@@ -249,6 +249,30 @@ describe('ModbusServer', () => {
   /** Who each `send` of `event` was addressed to. `undefined` is every window. */
   const getAddressees = (event: string) => getWindowCalls(event).map((c) => c[2])
 
+  describe('readRegisters', () => {
+    it('answers the words a register holds, and 0 past them', () => {
+      const words = addedOrThrow(
+        server.addRegister({
+          uuid,
+          unitId,
+          params: {
+            address: 10,
+            registerType: 'holding_registers',
+            dataType: 'float',
+            comment: '',
+            value: 1.23456,
+            min: undefined,
+            max: undefined,
+            interval: undefined
+          }
+        })
+      )
+
+      expect(server.readRegisters(uuid, unitId, 'holding_registers', 10, 3)).toEqual([...words, 0])
+      expect(server.readRegisters(uuid, '9', 'holding_registers', 10, 1)).toEqual([0])
+    })
+  })
+
   describe('addRegister with static value', () => {
     it('writes a uint16 value to the correct address', () => {
       server.addRegister({

@@ -40,6 +40,7 @@ const mcp = new McpService({
   settings: createFileSettingsStore({ path: join(app.getPath('userData'), MCP_SETTINGS_FILE) }),
   context: {
     client,
+    server,
     appState,
     rendererCommands,
     mainWindowOpen: (): boolean => windows.main !== null && !windows.main.isDestroyed()

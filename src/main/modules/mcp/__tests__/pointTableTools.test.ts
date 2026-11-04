@@ -655,6 +655,15 @@ describe('server_apply_point_table', () => {
 describe('server_get_values', () => {
   it("answers every register with its raw value and the words, in the server's byte order", async () => {
     const context = serverContext()
+    context.setServerWords('sim', '2', 'holding_registers', 0, [
+      ...createRegisters('float', 2305, byteOrderFlags('CDAB')),
+      0xfffe,
+      0xffff,
+      0xffff,
+      0xffff,
+      7
+    ])
+    context.setServerWords('sim', '2', 'input_registers', 0, [0x4142, 0])
     const client = await connectInMemory(context)
 
     const result = await client.callTool({ name: 'server_get_values', arguments: { port: 503 } })
@@ -709,6 +718,44 @@ describe('server_get_values', () => {
         }
       ]
     })
+  })
+
+  // The store keeps a float rounded to three decimals, so re-encoding it
+  // reported words the server does not answer a read with.
+  it('answers the words the server holds, not an encoding of the stored value', async () => {
+    const context = serverContext({
+      server_get_values: async () => ({
+        ...SIM_VALUES,
+        units: {
+          '2': {
+            coils: {},
+            discrete_inputs: {},
+            input_registers: {},
+            holding_registers: {
+              0: {
+                value: 1.235,
+                params: {
+                  address: 0,
+                  registerType: 'holding_registers',
+                  dataType: 'float',
+                  comment: 'Voltage',
+                  value: 1.23456
+                }
+              }
+            }
+          }
+        }
+      })
+    })
+    const wire = createRegisters('float', 1.23456, byteOrderFlags('CDAB'))
+    context.setServerWords('sim', '2', 'holding_registers', 0, wire)
+    const client = await connectInMemory(context)
+
+    const result = await client.callTool({ name: 'server_get_values', arguments: { port: 503 } })
+
+    const [unit] = jsonOf(result).units as { registers: { words?: number[] }[] }[]
+    expect(unit?.registers[0]?.words).toEqual(wire)
+    expect(context.server.readRegisters).toHaveBeenCalledWith('sim', '2', 'holding_registers', 0, 2)
   })
 
   it('narrows the answer to the unit asked for', async () => {

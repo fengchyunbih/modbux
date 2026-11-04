@@ -3,6 +3,7 @@ import type { CallToolResult, ToolAnnotations } from '@modelcontextprotocol/sdk/
 import z, { ZodRawShape } from 'zod'
 import type { AppState } from '../../state'
 import type { ModbusClient } from '../modbusClient'
+import type { ModbusServer } from '../modbusServer'
 import type { RendererCommands } from '../rendererCommands'
 
 /**
@@ -27,6 +28,8 @@ export interface McpToolContext {
     AppState,
     'connectionConfig' | 'registerConfig' | 'registerMapping' | 'readConfiguration'
   >
+  /** The Modbus servers' registers, which hold the words a master reads. */
+  server: Pick<ModbusServer, 'readRegisters'>
   rendererCommands: Pick<RendererCommands, 'send'>
   /** Whether the main window is open, which every tool needs (已決定 4). */
   mainWindowOpen: () => boolean
