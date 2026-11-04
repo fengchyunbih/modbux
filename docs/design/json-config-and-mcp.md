@@ -116,7 +116,6 @@ Prompts：`point_table_to_client`、`point_table_to_simulator`、閉環測試。
 
 - 同一份點表內 byte order 不一致：一份設定只有一個 byte order。
 - 16 位元類型或 `utf8` 的 byte swap：`byteSwap` 只套用在 32 與 64 位元類型。
-- 步驟 6 完成前的 byte swap（BADC、DCBA）。
 - 同一條 RS485 上的多個 unit id：一份 Client 設定只有一個 unitId。
 
 ## 已決定
