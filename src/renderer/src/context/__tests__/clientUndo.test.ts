@@ -3,7 +3,7 @@
 // An undo replays the setter a user's edit went through, so what it puts back
 // reaches main the same way and passes the same guards. These drive the client
 // store through the renderer stub and read what the store holds after.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultClientState } from '@shared'
 import { stubRenderer } from './stubRenderer'
 
@@ -25,6 +25,14 @@ beforeEach(() => {
   vi.resetModules()
   localStorage.clear()
   stubRenderer()
+})
+
+// A mapping edit sends after a 150 ms debounce. A file that ends inside that
+// window fires the timer after happy-dom is gone, as `window is not defined`.
+// The flush clears the timer of the module instance this test imported.
+afterEach(async () => {
+  const { flushRegisterMappingToMain, useClientZustand } = await import('../client.zustand')
+  await flushRegisterMappingToMain(useClientZustand.getState().registerMapping)
 })
 
 const load = async (): Promise<{
