@@ -348,6 +348,26 @@ describe('ModbusClient', () => {
       expect(messages.some((m) => m[1].variant === 'error')).toBe(true)
     })
 
+    it('keeps the reason a connect failed for a caller in main', async () => {
+      mockModbusRTU.connectTCP.mockRejectedValue(new Error('Connection refused'))
+
+      await client.connect()
+
+      const errors = getWindowCalls('backend_message').filter((m) => m[1].variant === 'error')
+      expect(client.lastConnectError).toBe(errors.at(-1)?.[1].message)
+      expect(client.lastConnectError).toContain('Connection refused')
+    })
+
+    it('forgets the reason once a connect succeeds', async () => {
+      mockModbusRTU.connectTCP.mockRejectedValueOnce(new Error('Connection refused'))
+      await client.connect()
+
+      await client.connect()
+
+      expect(getLastClientState().connectState).toBe('connected')
+      expect(client.lastConnectError).toBeUndefined()
+    })
+
     it('uses RTU when protocol is ModbusRtu', async () => {
       appState.updateConnectionConfig({ protocol: 'ModbusRtu' })
 

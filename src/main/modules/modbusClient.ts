@@ -385,16 +385,27 @@ export class ModbusClient {
    */
   private _connectInFlight = false
 
+  /**
+   * Why the last connect did not connect, as the message it sent the window.
+   *
+   * Cleared when a connect starts. The window hears the reason as a
+   * `backend_message`; this is the same text for a caller in main, which is the
+   * MCP `client_connect` tool.
+   */
+  private _lastConnectError: string | undefined
+
+  get lastConnectError(): string | undefined {
+    return this._lastConnectError
+  }
+
   // --- Override connect/disconnect to manage auto-reconnect ---
   public connect = async (): Promise<void> => {
     if (this._connectInFlight) {
-      this._emitMessage({
-        message: 'Still finishing the connect you cancelled',
-        variant: 'warning',
-        error: null
-      })
+      this._lastConnectError = 'Still finishing the connect you cancelled'
+      this._emitMessage({ message: this._lastConnectError, variant: 'warning', error: null })
       return
     }
+    this._lastConnectError = undefined
     const generation = ++this._connectGeneration
     this._shouldAutoReconnect = true
     if (!this._reconnectTriggered) this._consecutiveReconnects = 0
@@ -499,6 +510,7 @@ export class ModbusClient {
       }
       const port = protocol === 'ModbusRtu' ? com : undefined
       const reason = humanizeSerialError(error as Error, port)
+      this._lastConnectError = reason
       // A failed reconnect is one attempt of the burst, not the end of it: a
       // pulled USB cable fails every open until it is plugged back in, and no
       // `close` follows a failed open to schedule the next one.

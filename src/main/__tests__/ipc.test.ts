@@ -581,7 +581,8 @@ describe('each guarded channel got its own schema', () => {
       stub() as never,
       stub() as never,
       stub() as never,
-      windows
+      windows,
+      stub() as never
     )
     return { sent }
   }
@@ -669,7 +670,7 @@ describe('the read channel', () => {
     handle.mockClear()
     const { windows } = createWindows()
     const read = vi.fn().mockResolvedValue({ read: true, data: [], groups: [], errors: [] })
-    initIpc({} as Electron.App, {} as never, { read } as never, {} as never, windows)
+    initIpc({} as Electron.App, {} as never, { read } as never, {} as never, windows, {} as never)
 
     expect(await invoke('read')).toBeUndefined()
     expect(read).toHaveBeenCalledOnce()

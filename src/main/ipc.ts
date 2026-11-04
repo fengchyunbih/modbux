@@ -27,6 +27,7 @@ import {
 import { Windows } from './windows'
 import { ModbusClient } from './modules/modbusClient'
 import { ModbusServer } from './modules/modbusServer'
+import type { McpService } from './modules/mcp/mcpService'
 import { applyPrivilegedPortFix, getPrivilegedPortStatus } from './modules/privilegedPort'
 import { applySerialGroupFix, getSerialGroupStatus, requestLogout } from './modules/serialGroup'
 import { IpcMainEvent, IpcMainInvokeEvent, ipcMain } from 'electron'
@@ -181,10 +182,11 @@ type InitIpcFn = (
   state: AppState,
   client: ModbusClient,
   server: ModbusServer,
-  windows: Windows
+  windows: Windows,
+  mcp: McpService
 ) => void
 
-export const initIpc: InitIpcFn = (app, state, client, server, windows) => {
+export const initIpc: InitIpcFn = (app, state, client, server, windows, mcp) => {
   const ipcHandle = createIpcHandle(windows)
 
   // Connection config
@@ -310,6 +312,12 @@ export const initIpc: InitIpcFn = (app, state, client, server, windows) => {
   ipcHandle('get_serial_group_status', () => getSerialGroupStatus())
   ipcHandle('apply_serial_group_fix', () => applySerialGroupFix())
   ipcHandle('request_logout', () => requestLogout())
+
+  // MCP server settings (main persists them, because it starts the server)
+  ipcHandle('get_mcp_status', () => mcp.status)
+  ipcHandle('set_mcp_enabled', (_, enabled) => mcp.setEnabled(enabled))
+  ipcHandle('set_mcp_allow_writes', (_, allowWrites) => mcp.setAllowWrites(allowWrites))
+  ipcHandle('regenerate_mcp_token', () => mcp.regenerateToken())
 
   // Serial port discovery
   ipcHandle('list_serial_ports', () => client.listSerialPorts())

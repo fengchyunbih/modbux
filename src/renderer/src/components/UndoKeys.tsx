@@ -65,7 +65,7 @@ const replays: Record<'client' | 'server', Record<'undo' | 'redo', () => Promise
 
 /**
  * Runs undo and redo on the stack of the view on screen: the client's, the
- * server's, or nothing on Home.
+ * server's, or nothing on Home and Settings.
  *
  * A real key reaches this listener with Electron's default Edit menu in place,
  * measured on macOS with `osascript`. The listener is on `window` in the
@@ -85,7 +85,7 @@ const UndoKeys = meme((): null => {
       if (document.querySelector('[role="dialog"]')) return
 
       const appType = useLayoutZustand.getState().appType
-      if (!appType) return
+      if (appType !== 'client' && appType !== 'server') return
 
       event.preventDefault()
       void replays[appType][direction]().then((outcome) => {

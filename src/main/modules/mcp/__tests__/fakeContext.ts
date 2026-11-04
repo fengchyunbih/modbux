@@ -1,0 +1,129 @@
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import { vi } from 'vitest'
+import {
+  ClientConfigSnapshot,
+  ClientState,
+  defaultClientState,
+  defaultConnectionConfig,
+  defaultRegisterConfig,
+  emptyRegisterMapping,
+  RegisterMapping
+} from '@shared'
+import type { ReadOutcome } from '../../modbusClient'
+import { McpToolContext } from '../registry'
+import { createMcpServer } from '../server'
+
+export const CONFIG: ClientConfigSnapshot = {
+  name: 'Meter on the bench',
+  connectionConfig: { ...defaultConnectionConfig, unitId: 7 },
+  registerConfig: defaultRegisterConfig,
+  registerMapping: emptyRegisterMapping(),
+  readConfiguration: false
+}
+
+/** What a stand-in renderer command answers, by name. */
+export type CommandAnswers = Partial<Record<string, () => Promise<unknown>>>
+
+export interface FakeContext extends McpToolContext {
+  /** Set the client state the tools read. */
+  setClientState: (state: Partial<ClientState>) => void
+  setLastConnectError: (message: string | undefined) => void
+  setMainWindowOpen: (open: boolean) => void
+  setMapping: (mapping: RegisterMapping) => void
+  setReadConfiguration: (on: boolean) => void
+  read: ReturnType<typeof vi.fn<() => Promise<ReadOutcome>>>
+  send: ReturnType<typeof vi.fn>
+}
+
+/**
+ * A context whose client and renderer commands are stand-ins.
+ *
+ * `answers` replaces what a command resolves with; an unnamed command answers
+ * `client_get_config`'s snapshot or `{ outcome: 'requested' }`.
+ */
+export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
+  let clientState: ClientState = { ...defaultClientState }
+  let lastConnectError: string | undefined
+  let mainWindowOpen = true
+  let registerMapping: RegisterMapping | undefined = emptyRegisterMapping()
+  let readConfiguration = false
+  const registerConfig = { ...defaultRegisterConfig }
+  const connectionConfig = { ...defaultConnectionConfig, unitId: 7 }
+
+  const read = vi.fn<() => Promise<ReadOutcome>>(async () => ({
+    read: true,
+    data: [],
+    groups: [],
+    errors: []
+  }))
+  const send = vi.fn(async (name: string) => {
+    const answer = answers[name]
+    if (answer) return answer()
+    if (name === 'client_get_config') return CONFIG
+    return { outcome: 'requested' }
+  })
+
+  return {
+    client: {
+      read,
+      get state() {
+        return clientState
+      },
+      get lastConnectError() {
+        return lastConnectError
+      }
+    },
+    appState: {
+      connectionConfig,
+      registerConfig,
+      get registerMapping() {
+        return registerMapping
+      },
+      get readConfiguration() {
+        return readConfiguration
+      }
+    },
+    rendererCommands: { send: send as unknown as McpToolContext['rendererCommands']['send'] },
+    mainWindowOpen: () => mainWindowOpen,
+    allowWrites: () => false,
+    setClientState: (state) => {
+      clientState = { ...clientState, ...state }
+    },
+    setLastConnectError: (message) => {
+      lastConnectError = message
+    },
+    setMainWindowOpen: (open) => {
+      mainWindowOpen = open
+    },
+    setMapping: (mapping) => {
+      registerMapping = mapping
+    },
+    setReadConfiguration: (on) => {
+      readConfiguration = on
+    },
+    read,
+    send
+  }
+}
+
+/** An SDK client connected in memory to a server answering for `context`. */
+export const connectInMemory = async (context: McpToolContext): Promise<Client> => {
+  const server = createMcpServer(context, '0.0.0-test')
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  const client = new Client({ name: 'test', version: '0' })
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+  return client
+}
+
+/** The text of a tool result's first content block, or a failure saying there was none. */
+export const textOf = (result: unknown): string => {
+  const content = (result as CallToolResult).content[0]
+  if (content?.type !== 'text') throw new Error('the result has no text content')
+  return content.text
+}
+
+/** The JSON a tool result carries. */
+export const jsonOf = (result: unknown): Record<string, unknown> => JSON.parse(textOf(result))

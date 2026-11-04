@@ -1,7 +1,9 @@
 import CallSplit from '@mui/icons-material/CallSplit'
+import SettingsIcon from '@mui/icons-material/Settings'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Fade from '@mui/material/Fade'
+import IconButton from '@mui/material/IconButton'
 import Typography from '@mui/material/Typography'
 import { SxProps } from '@mui/material/styles'
 import { meme } from '@renderer/components/shared/inputs/meme'
@@ -93,6 +95,30 @@ const ServerButton = meme((): JSX.Element => {
         Server
       </Typography>
     </Button>
+  )
+})
+
+//
+//
+//
+//
+// Button to open the settings page
+const SettingsButton = meme((): JSX.Element => {
+  const handleClick = useCallback((): void => {
+    const layoutZustand = useLayoutZustand.getState()
+    layoutZustand.setAppType('settings')
+  }, [])
+
+  return (
+    <IconButton
+      data-testid="home-settings-btn"
+      aria-label="Settings"
+      title="Settings"
+      sx={{ position: 'fixed', top: 12, right: 16, opacity: 0.75, '&:hover': { opacity: 1 } }}
+      onClick={handleClick}
+    >
+      <SettingsIcon />
+    </IconButton>
   )
 })
 
@@ -198,6 +224,7 @@ const Home = meme(() => {
             <OpenProjectButton />
           </Box>
         </Box>
+        <SettingsButton />
         <PloxcLogo />
         <Version />
       </Box>

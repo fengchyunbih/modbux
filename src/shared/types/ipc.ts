@@ -30,7 +30,8 @@ import type {
   SerialGroupStatus,
   SerialGroupFixResult,
   RendererCommandRequest,
-  RendererCommandReply
+  RendererCommandReply,
+  McpStatus
 } from '@shared'
 // `import type`, because shared is the one module all three processes compile
 // against and notistack is a renderer dependency. `variant` below is the only
@@ -101,7 +102,11 @@ export const IPC_CHANNELS = [
   'apply_privileged_port_fix',
   'get_serial_group_status',
   'apply_serial_group_fix',
-  'request_logout'
+  'request_logout',
+  'get_mcp_status',
+  'set_mcp_enabled',
+  'set_mcp_allow_writes',
+  'regenerate_mcp_token'
 ] as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[number]
@@ -373,6 +378,35 @@ export interface IpcHandlerSpec {
     args: []
     return: boolean
   }
+
+  /**
+   * The MCP server's switches, token and run state.
+   *
+   * `mcp_status` is pushed on a change, so the settings page asks this once
+   * when it opens and listens from there.
+   */
+  ['get_mcp_status']: {
+    args: []
+    return: McpStatus
+  }
+
+  /** Switch MCP on or off, and answer once the listener has started or stopped. */
+  ['set_mcp_enabled']: {
+    args: [boolean]
+    return: McpStatus
+  }
+
+  /** The "Allow writes to devices" switch. */
+  ['set_mcp_allow_writes']: {
+    args: [boolean]
+    return: McpStatus
+  }
+
+  /** Replace the MCP token; a client holding the old one is refused from the next request on. */
+  ['regenerate_mcp_token']: {
+    args: []
+    return: McpStatus
+  }
 }
 
 export type IpcHandlerMap = {
@@ -400,7 +434,8 @@ export const EVENTS_TO_RENDERER = [
   'window_update',
   'address_groups',
   'rtu_server_status',
-  'renderer_command'
+  'renderer_command',
+  'mcp_status'
 ] as const
 
 /** The events a window pushes to main. `sendEvent` there, `onIpcEvent` here. */
@@ -425,6 +460,8 @@ export interface IpcEventPayloadMap {
   ['renderer_command']: [RendererCommandRequest]
   /** The main window's answer to one `renderer_command`, matched on its `id`. */
   ['renderer_command_result']: [RendererCommandReply]
+  /** The MCP server's status, on every change to it. */
+  ['mcp_status']: [McpStatus]
 }
 
 export interface BackendMessage {

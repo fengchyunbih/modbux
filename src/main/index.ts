@@ -9,6 +9,8 @@ import os from 'os'
 import { ModbusServer } from './modules/modbusServer'
 import { Windows } from './windows'
 import { RendererCommands } from './modules/rendererCommands'
+import { McpService } from './modules/mcp/mcpService'
+import { createFileSettingsStore, MCP_SETTINGS_FILE } from './modules/mcp/settings'
 
 if (is.dev && os.platform() === 'darwin') {
   app.disableHardwareAcceleration()
@@ -26,15 +28,28 @@ const client = new ModbusClient({ appState, windows })
 // Initialize the modbus server
 const server = new ModbusServer({ windows })
 
-// IPC
-initIpc(app, appState, client, server, windows)
-
-// Commands main sends to the main window's stores. Nothing in main sends one
-// yet; the MCP server is what will.
+// Commands main sends to the main window's stores, which the MCP tools send.
 const rendererCommands = new RendererCommands({ windows })
 onIpcEvent('renderer_command_result', (event, reply) =>
   rendererCommands.receive(event.sender, reply)
 )
+
+// The MCP server. Its settings live in main because whether it listens is
+// decided here, before any window has loaded.
+const mcp = new McpService({
+  settings: createFileSettingsStore({ path: join(app.getPath('userData'), MCP_SETTINGS_FILE) }),
+  context: {
+    client,
+    appState,
+    rendererCommands,
+    mainWindowOpen: (): boolean => windows.main !== null && !windows.main.isDestroyed()
+  },
+  version: app.getVersion(),
+  onStatus: (status): void => windows.send('mcp_status', status, 'main')
+})
+
+// IPC
+initIpc(app, appState, client, server, windows, mcp)
 
 /**
  * Say which path took the app down.
@@ -259,6 +274,10 @@ app.whenReady().then(async () => {
 
   const mainWindow = createWindow()
 
+  // Not awaited: a port in use is a status the settings page shows, and the
+  // window does not wait on it.
+  void mcp.start()
+
   mainWindow.once('ready-to-show', () => {
     if (splash) splash.close()
     splash = null
@@ -287,6 +306,7 @@ app.on('window-all-closed', () => {
 // JavaScript that asked for it, and a quit from outside the app's own code
 // has none of its frames in it.
 app.on('before-quit', () => lifecycle(`before-quit\n${new Error().stack}`))
+app.on('will-quit', () => void mcp.stop())
 app.on('quit', (_event, exitCode) => lifecycle(`quit exitCode=${exitCode}`))
 
 // In this file you can include the rest of your app"s specific main process
