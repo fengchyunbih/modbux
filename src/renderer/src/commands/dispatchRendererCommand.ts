@@ -29,6 +29,24 @@ const run = async <N extends RendererCommandName>(
 }
 
 /**
+ * A runner that starts each task once the one before it has settled, in the
+ * order they were handed over.
+ *
+ * Commands write through store actions that wait on main, and one undo step
+ * snapshots the configuration before it starts: two run at once took the same
+ * snapshot, so the first undo put back what was there before both. A task that
+ * rejects does not stop the ones after it.
+ */
+export const createSerialRunner = (): ((task: () => Promise<void>) => Promise<void>) => {
+  let tail: Promise<void> = Promise.resolve()
+  return (task) => {
+    const run = tail.then(task)
+    tail = run.catch(() => undefined)
+    return run
+  }
+}
+
+/**
  * Run one `renderer_command` and answer the reply main is waiting for.
  *
  * The payload is parsed against the command's schema before the handler sees

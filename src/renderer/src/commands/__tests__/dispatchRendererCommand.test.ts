@@ -5,7 +5,11 @@ import {
   defaultRegisterConfig,
   emptyRegisterMapping
 } from '@shared'
-import { dispatchRendererCommand, RendererCommandHandlers } from '../dispatchRendererCommand'
+import {
+  createSerialRunner,
+  dispatchRendererCommand,
+  RendererCommandHandlers
+} from '../dispatchRendererCommand'
 
 const config: ClientConfigSnapshot = {
   name: 'Meter',
@@ -153,4 +157,45 @@ describe('dispatchRendererCommand', () => {
       expect(await dispatchRendererCommand(request, handlersAnswering())).toBe(undefined)
     }
   )
+})
+
+describe('createSerialRunner', () => {
+  it('starts each task once the one before it has settled, in order', async () => {
+    const runInOrder = createSerialRunner()
+    const events: string[] = []
+    let finishFirst: () => void = () => {}
+
+    const first = runInOrder(async () => {
+      events.push('first start')
+      await new Promise<void>((resolve) => {
+        finishFirst = resolve
+      })
+      events.push('first end')
+    })
+    const second = runInOrder(async () => {
+      events.push('second start')
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(events).toEqual(['first start'])
+
+    finishFirst()
+    await Promise.all([first, second])
+    expect(events).toEqual(['first start', 'first end', 'second start'])
+  })
+
+  it('runs the next task after one that rejects', async () => {
+    const runInOrder = createSerialRunner()
+    const failed = runInOrder(async () => {
+      throw new Error('broken')
+    })
+    let ran = false
+    const next = runInOrder(async () => {
+      ran = true
+    })
+
+    await expect(failed).rejects.toThrow('broken')
+    await next
+    expect(ran).toBe(true)
+  })
 })

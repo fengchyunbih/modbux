@@ -220,6 +220,31 @@ describe('client_apply_point_table', () => {
   })
 })
 
+// Two commands sent at once each record their own step only when the second
+// starts after the first has finished: run together, both snapshot the same
+// configuration as their step.
+describe('commands sent at once', () => {
+  it('run one after the other, each its own undo step', async () => {
+    const commands = await wireUp()
+    const { client, undoClient } = await stores()
+    const before = client().connectionConfig
+
+    await Promise.all([
+      commands.send('client_set_connection', { tcp: { host: '10.0.0.1' } }),
+      commands.send('client_set_connection', { tcp: { options: { port: 1502 } } })
+    ])
+    expect(client().connectionConfig.tcp).toEqual({ host: '10.0.0.1', options: { port: 1502 } })
+
+    expect(await undoClient()).toBe('done')
+    expect(client().connectionConfig.tcp).toEqual({
+      host: '10.0.0.1',
+      options: { port: before.tcp.options.port }
+    })
+    expect(await undoClient()).toBe('done')
+    expect(client().connectionConfig).toEqual(before)
+  })
+})
+
 describe('the server commands', () => {
   const SIM = 'sim'
 

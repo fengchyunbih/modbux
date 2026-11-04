@@ -149,8 +149,22 @@ describe('RendererCommands', () => {
 
     const error = await settled
     expect(error.code).toBe('timeout')
-    expect(error.message).toBe('server_list: the main window did not answer within 1000 ms')
+    expect(error.message).toBe(
+      'server_list: the main window did not answer within 1000 ms. The window runs commands one at a time, so this one may still complete: check the state (client_get_config, server_list) before you retry it.'
+    )
     expect(commands.pendingCount).toBe(0)
+  })
+
+  it('gives project_import six times the timeout', async () => {
+    const settled = rejection(commands.send('project_import', { json: '{}' }))
+
+    await vi.advanceTimersByTimeAsync(5999)
+    expect(commands.pendingCount).toBe(1)
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect((await settled).message).toMatch(
+      /^project_import: the main window did not answer within 6000 ms\./
+    )
   })
 
   it('clears the timeout of a command that was answered', async () => {

@@ -21,6 +21,14 @@ import { Windows } from '../windows'
 export const RENDERER_COMMAND_TIMEOUT_MS = 10_000
 
 /**
+ * The commands given six times the timeout. A project import replaces every
+ * server, each one a delete or a create that waits on main to free or bind a
+ * port, so it runs longer than one store action.
+ */
+const LONG_COMMANDS: ReadonlySet<RendererCommandName> = new Set(['project_import'])
+const LONG_COMMAND_FACTOR = 6
+
+/**
  * Why a command failed.
  *
  * - `no_main_window`: no main window was open to send it to, so nothing ran.
@@ -109,16 +117,19 @@ export class RendererCommands {
     }
 
     const id = this._createId()
+    const timeoutMs = LONG_COMMANDS.has(name)
+      ? this._timeoutMs * LONG_COMMAND_FACTOR
+      : this._timeoutMs
     return new Promise<RendererCommandResult<N>>((resolve, reject) => {
       const timer = setTimeout(() => {
         this._pending.delete(id)
         reject(
           new RendererCommandError(
             'timeout',
-            `${name}: the main window did not answer within ${this._timeoutMs} ms`
+            `${name}: the main window did not answer within ${timeoutMs} ms. The window runs commands one at a time, so this one may still complete: check the state (client_get_config, server_list) before you retry it.`
           )
         )
-      }, this._timeoutMs)
+      }, timeoutMs)
 
       const finish = (): void => {
         clearTimeout(timer)
