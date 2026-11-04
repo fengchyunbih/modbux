@@ -1,6 +1,6 @@
 # JSON 設定檔與 MCP：目標與大方向
 
-狀態：草案，待對齊。對齊前不動工。
+狀態：方向已對齊，見「已決定」。只在 fork 開發，不回饋 upstream。
 
 ## 目標
 
@@ -9,7 +9,7 @@
 1. **AI 連線實機讀值。** 拿到點表（例如電表點位表）後，AI 透過 MCP 建立對應的 Client 設定，連上裝置讀回各點的值，並用讀值檢查 word order 與比例是否正確。這是剛需。
 2. **AI 建立 Server 模擬器。** AI 透過 MCP 依點表建立 Server，給出固定值或變動範圍，當作模擬器使用。
 3. **閉環測試。** 同一個 app 裡的 Client 連到自己的 Server，驗證模擬器的點表與 Client 的 mapping 一致。屬於附加功能。
-4. **JSON 設定檔完整化。** Server 與 Client 的設定都能以 JSON 完整匯出、匯入，包含連線設定。
+4. **JSON 設定檔完整化。** Server 與 Client 的設定都能以 JSON 完整匯出、匯入，包含連線設定。另有 project 檔，把一個 Client 與多台 Server 存成一份。
 
 MCP 以本機 Local 方式運作。
 
@@ -42,8 +42,10 @@ Save／Open 按鈕的邏輯抽成共用函式，按鈕與 MCP tool 呼叫同一�
 ### 傳輸
 
 - 主要：main 內嵌 MCP Streamable HTTP server，只綁 `127.0.0.1`，Bearer token 認證，驗證 `Origin` header（MCP 規範要求，見 <https://modelcontextprotocol.io/specification/2025-06-18/basic/transports>）。
+- Port 固定為 `15502`，不提供設定。理由見「已決定」。
 - 補充：stdio shim，給只支援 stdio 的 MCP client 使用，轉送到上面的 HTTP 端點。
 - 預設關閉。「啟用 MCP」與「允許寫入裝置」是兩個開關，寫入類 tool 標註 `destructiveHint`。
+- MCP 只在 main window 開著時運作；沒開時，tool 回傳錯誤。
 
 ## MCP 介面草案
 
@@ -58,6 +60,8 @@ Client tools：`client_get_config`、`client_set_connection`、`client_apply_poi
 
 Server tools：`server_list`、`server_create`、`server_delete`、`server_apply_point_table`、`server_set_values`、`server_get_values`、`server_export_config`、`server_import_config`。
 
+Project tools：`project_export`、`project_import`。
+
 Resources：設定檔的 JSON Schema、目前的 Client 設定、Server 清單與各台設定、編碼說明（data type 寬度、word order、address base）。
 
 Prompts：`point_table_to_client`、`point_table_to_simulator`、閉環測試。
@@ -66,30 +70,36 @@ Prompts：`point_table_to_client`、`point_table_to_simulator`、閉環測試。
 
 每一步是一個 PR，遵守 CONTRIBUTING 的「一個 PR 只處理一件事」。
 
-| 步驟 | 內容                                                                          | 服務的目標                       |
-| ---- | ----------------------------------------------------------------------------- | -------------------------------- |
-| 1    | 存檔／讀檔邏輯抽成 shared 函式與 store action，行為不變                       | 4，也是 MCP 套用點表與匯出的基礎 |
-| 2    | Client 設定檔升版加入連線與讀取設定，Server 設定檔升版加入 port，含遷移與測試 | 4                                |
-| 3    | `_read` 回傳資料；比例與內插換算移到 shared                                   | 1 的前提                         |
-| 4    | main 到 renderer 的命令通道                                                   | 1、2 的前提                      |
-| 5    | MCP server 骨架與設定頁，加上 Client tools                                    | 1                                |
-| 6    | Server tools                                                                  | 2                                |
-| 7    | 閉環測試 prompt、stdio shim、scan tools                                       | 3                                |
+| 步驟 | 內容                                                                                                  | 服務的目標                       |
+| ---- | ----------------------------------------------------------------------------------------------------- | -------------------------------- |
+| 1    | 存檔／讀檔邏輯抽成 shared 函式與 store action，行為不變                                               | 4，也是 MCP 套用點表與匯出的基礎 |
+| 2    | Client 設定檔升版加入連線與讀取設定，Server 設定檔升版加入 port，含遷移與測試                         | 4                                |
+| 3    | Project 檔：一個 Client 設定、多台 Server 設定、serverMode 與 serialConfig，存成一份；UI 加匯出與匯入 | 4                                |
+| 4    | `_read` 回傳資料；比例與內插換算移到 shared                                                           | 1 的前提                         |
+| 5    | main 到 renderer 的命令通道                                                                           | 1、2 的前提                      |
+| 6    | MCP server 骨架與設定頁，加上 Client tools                                                            | 1                                |
+| 7    | Server tools 與 Project tools                                                                         | 2                                |
+| 8    | 閉環測試 prompt、stdio shim、scan tools                                                               | 3                                |
 
-步驟 1 到 2 與步驟 3 到 4 互不依賴，可以平行進行。
+步驟 1 到 3 與步驟 4 到 5 互不依賴，可以平行進行。
 
 ## 已知限制
 
 點表裡有這些內容時，tool 回報 rejected，不默默套用：
 
-- byte swap（BADC、DCBA），或同一份點表內 word order 不一致。
+- byte swap（BADC、DCBA），或同一份點表內 word order 不一致。目前不支援，見「已決定」。
 - 同一條 RS485 上的多個 unit id：一份 Client 設定只有一個 unitId。
 
-## 待對齊
+## 已決定
 
-1. **回饋 upstream，或只留在 fork？** 步驟 5 要新增 `@modelcontextprotocol/sdk`，產生 JSON Schema 要新增 `zod-to-json-schema` 或升級 zod v4。CONTRIBUTING 規定新依賴要先在 upstream（`ploxc/modbux`）討論；只留在 fork 則不受此限。
-2. **byte swap 與逐點 word order 要不要支援？** 要的話是設定檔格式與編碼層的變更，應排在步驟 2 一併處理。
-3. **要不要 project 檔**（一個 Client 加多台 Server 存成一份）？
-4. **MCP 要求 main window 開著**，這個前提是否可接受？
-5. **MCP 的 port** 固定，還是可在設定頁調整？
-6. **本文件的語言。** 專案規則是 repository 內一律英文，本草案以正體中文撰寫以便對齊；合併前是否要改寫成英文？
+1. **只留在 fork，不回饋 upstream。** CONTRIBUTING 要求新依賴先在 upstream 討論，這條在 fork 不適用。步驟 6 新增 `@modelcontextprotocol/sdk`；產生 JSON Schema 新增 `zod-to-json-schema` 或升級 zod v4，到該步驟時再選。
+2. **逐點 word order 與 byte swap 目前不做。** 格式維持整份一個 `littleEndian`。
+3. **做 project 檔。** 排在步驟 3。
+4. **MCP 運作時 main window 必須開著。**
+5. **MCP port 固定為 `15502`。**
+   - 不在 `findAvailablePort` 自動配給 Modbus server 的範圍（`502` 到 `10502`），Modbux 自己開的 server 不會佔到它。
+   - 低於 Linux 的 ephemeral port 範圍：本機 `cat /proc/sys/net/ipv4/ip_local_port_range` 印出 `32768	60999`。也低於 Windows 與 macOS 預設的 dynamic port 範圍 `49152` 到 `65535`（Windows 見 <https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/default-dynamic-port-range-tcpip-chang>）。對外連線的來源 port 不會佔到它。
+   - 不在本機 `/etc/services`：`grep 15502 /etc/services` 沒有輸出。
+   - 被佔用時 MCP 不啟動，設定頁顯示錯誤，不自動改用別的 port，因為 MCP client 端寫死了這個 URL。
+   - 使用者手動把 Modbus server 的 port 設成 `15502` 時，要拒絕。
+6. **文件使用正體中文。**
