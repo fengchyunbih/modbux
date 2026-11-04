@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ValueGenerator } from '../valueGenerator'
-import type { ServerData, UnitIdString } from '@shared'
+import { byteOrderFlags, type ServerData, type UnitIdString } from '@shared'
 import type { Windows } from '../../../windows'
+
+const ABCD = byteOrderFlags('ABCD')
+const CDAB = byteOrderFlags('CDAB')
 
 const createMockWindows = (): Windows => ({ send: vi.fn() }) as unknown as Windows
 
@@ -45,7 +48,7 @@ describe('ValueGenerator', () => {
       dataType: 'uint16',
       min: 100,
       max: 100, // fixed value: min === max
-      littleEndian: false,
+      order: ABCD,
       interval: 1000,
       comment: 'test'
     })
@@ -66,6 +69,29 @@ describe('ValueGenerator', () => {
     gen.dispose()
   })
 
+  it('writes its value in the byte order the server holds', () => {
+    const serverData = createServerData()
+
+    const gen = new ValueGenerator({
+      uuid: 'test-uuid',
+      unitId: '1' as UnitIdString,
+      windows: createMockWindows(),
+      serverData,
+      registerType: 'holding_registers',
+      address: 0,
+      dataType: 'uint32',
+      min: 0x12345678,
+      max: 0x12345678,
+      order: byteOrderFlags('BADC'),
+      interval: 1000,
+      comment: ''
+    })
+
+    expect([wordAt(serverData, 0), wordAt(serverData, 1)]).toEqual([0x3412, 0x7856])
+
+    gen.dispose()
+  })
+
   it('updates value on interval tick', () => {
     const windows = createMockWindows()
     const serverData = createServerData()
@@ -80,7 +106,7 @@ describe('ValueGenerator', () => {
       dataType: 'uint16',
       min: 50,
       max: 50,
-      littleEndian: false,
+      order: ABCD,
       interval: 2000,
       comment: ''
     })
@@ -113,7 +139,7 @@ describe('ValueGenerator', () => {
       dataType: 'int32',
       min: 70000,
       max: 70000,
-      littleEndian: false,
+      order: ABCD,
       interval: 1000,
       comment: ''
     })
@@ -143,7 +169,7 @@ describe('ValueGenerator', () => {
       dataType: 'double',
       min: 1.0,
       max: 1.0,
-      littleEndian: false,
+      order: ABCD,
       interval: 1000,
       comment: ''
     })
@@ -170,7 +196,7 @@ describe('ValueGenerator', () => {
       dataType: 'uint16',
       min: 0,
       max: 100,
-      littleEndian: false,
+      order: ABCD,
       interval: 1000,
       comment: ''
     })
@@ -198,7 +224,7 @@ describe('ValueGenerator', () => {
       dataType: 'float',
       min: 0,
       max: 100,
-      littleEndian: false,
+      order: ABCD,
       interval: 1000,
       comment: ''
     })
@@ -232,7 +258,7 @@ describe('ValueGenerator', () => {
         dataType: 'uint16',
         min: 50,
         max: 50,
-        littleEndian: false,
+        order: ABCD,
         interval: 1000,
         comment: ''
       })
@@ -260,7 +286,7 @@ describe('ValueGenerator', () => {
         dataType: 'uint16',
         min: 100,
         max: 100,
-        littleEndian: false,
+        order: ABCD,
         interval: 1000,
         comment: ''
       })
@@ -284,7 +310,7 @@ describe('ValueGenerator', () => {
         dataType: 'int32',
         min: 70000,
         max: 70000,
-        littleEndian: false,
+        order: ABCD,
         interval: 1000,
         comment: ''
       })
@@ -311,7 +337,7 @@ describe('ValueGenerator', () => {
         dataType: 'double',
         min: 1.0,
         max: 1.0,
-        littleEndian: false,
+        order: ABCD,
         interval: 1000,
         comment: ''
       })
@@ -339,7 +365,7 @@ describe('ValueGenerator', () => {
         dataType: 'float',
         min: -10,
         max: 10,
-        littleEndian: true,
+        order: CDAB,
         interval: 5000,
         comment: 'temperature'
       })
@@ -378,7 +404,7 @@ describe('ValueGenerator', () => {
       dataType: 'uint16' as const,
       min: 70000,
       max: 70000,
-      littleEndian: false,
+      order: ABCD,
       interval: 1000,
       comment: ''
     })

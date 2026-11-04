@@ -1,4 +1,4 @@
-import { UnitIdString } from '@shared'
+import { byteOrderOf, UnitIdString } from '@shared'
 import { deepEqual } from 'fast-equals'
 import { enqueueSnackbar } from 'notistack'
 import { useServerZustand } from './server.zustand'
@@ -7,7 +7,7 @@ import { replayTop, useUndoZustand } from './undo.zustand'
 import { pushStep, serverStepKey, unitStructure } from './undo.zustand.helpers'
 import {
   ServerBoolStep,
-  ServerLittleEndianStep,
+  ServerByteOrderStep,
   ServerNameStep,
   ServerPortStep,
   ServerRecordStep,
@@ -50,14 +50,14 @@ const replayPort = async (
   return (await useServerZustand.getState().setPort(step.value)) ? replaced : undefined
 }
 
-const replayLittleEndian = async (
-  step: ServerLittleEndianStep
-): Promise<ServerLittleEndianStep | UndoRefusal | undefined> => {
+const replayByteOrder = async (
+  step: ServerByteOrderStep
+): Promise<ServerByteOrderStep | UndoRefusal | undefined> => {
   const server = useServerZustand.getState().servers[step.uuid]
   if (!server) return 'refused-gone'
   show(step.uuid)
-  const replaced: ServerLittleEndianStep = { ...step, value: server.littleEndian }
-  return (await useServerZustand.getState().setLittleEndian(step.value)) ? replaced : undefined
+  const replaced: ServerByteOrderStep = { ...step, value: byteOrderOf(server) }
+  return (await useServerZustand.getState().setByteOrder(step.value)) ? replaced : undefined
 }
 
 /** Refused for a coil that is gone since, which switching would bring back. */
@@ -140,8 +140,8 @@ const replay = (step: ServerUndoStep): Promise<ServerUndoStep | UndoRefusal | un
       return replayName(step)
     case 'port':
       return replayPort(step)
-    case 'littleEndian':
-      return replayLittleEndian(step)
+    case 'byteOrder':
+      return replayByteOrder(step)
     case 'bool':
       return replayBool(step)
     case 'unit':
@@ -165,6 +165,7 @@ const serverStructure = (server: PersistedServer | undefined): unknown =>
     name: server.name ?? '',
     port: server.port,
     littleEndian: server.littleEndian,
+    byteSwap: server.byteSwap,
     units: Object.fromEntries(
       Object.entries(server.registers)
         .map(([unitId, registers]) => [unitId, unitStructure(registers)] as const)

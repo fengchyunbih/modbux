@@ -1,5 +1,4 @@
-import z, { type ZodError, type ZodIssue } from 'zod'
-import { ReservedByteSwapSchema } from '../types/byteSwap'
+import type { ZodError, ZodIssue } from 'zod'
 import { PROJECT_KIND } from '../types/project'
 import { RegisterAddressKeySchema } from '../types/ranges'
 import { RegisterMapValueSchema } from '../types/client'
@@ -120,20 +119,13 @@ export function refuseOtherSidesConfig(
   }
 }
 
-const ByteSwapFieldSchema = z.object({ byteSwap: ReservedByteSwapSchema })
-
 /**
- * Refuses a file that asks for a byte swap, whatever version it claims.
- *
- * The current schema refuses it too, but two other branches would not: a step
- * from an older version rebuilds the config field by field and would drop the
- * key, and a file from a newer Modbux is repaired field by field and would
- * reset it to absent. Either way the file would open in ABCD or CDAB and read
- * every 32 and 64 bit value in the wrong byte order.
+ * Gives `holder` the `byteSwap: false` that a store written before byte swap
+ * existed means, and leaves one it carries alone. Nothing for a holder that is
+ * not an object, which `repairPersisted` resets and reports as it did before.
  */
-export function refuseByteSwap(parsed: Record<string, unknown>): void {
-  const result = ByteSwapFieldSchema.safeParse(parsed)
-  if (!result.success) throw new Error(formatZodError(result.error))
+export function addAbsentByteSwap(holder: unknown): void {
+  if (isRecord(holder) && !('byteSwap' in holder)) holder.byteSwap = false
 }
 
 /** The object entries of `value`, and nothing at all when it is not an object. */

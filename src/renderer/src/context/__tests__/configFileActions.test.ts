@@ -86,11 +86,11 @@ describe('the client', () => {
     await client().setType('holding_registers')
     client().setName('boiler')
     client().setRegisterMapping(3, 'comment', 'pump')
-    await client().setLittleEndian(true)
+    await client().setByteOrder('CDAB')
     const saved = file.exportClientConfig()
 
     client().setName('other')
-    await client().setLittleEndian(false)
+    await client().setByteOrder('ABCD')
     await client().clearRegisterMapping()
     const steps = undo().client.past.length
 
@@ -187,7 +187,7 @@ const savedClientThenMoved = async ({ client, file }: ClientModules): Promise<st
   await client().setLength('20', true)
   await client().setPollRate(3000)
   await client().setAddressBase('1')
-  await client().setLittleEndian(true)
+  await client().setByteOrder('CDAB')
   const saved = file.exportClientConfig()
 
   await client().setProtocol('ModbusTcp')
@@ -201,7 +201,7 @@ const savedClientThenMoved = async ({ client, file }: ClientModules): Promise<st
   await client().setLength('10', true)
   await client().setPollRate(1000)
   await client().setAddressBase('0')
-  await client().setLittleEndian(false)
+  await client().setByteOrder('ABCD')
   await client().clearRegisterMapping()
   client().setName('other')
   return saved
@@ -397,3 +397,45 @@ const useOtherServerOn = async (port: string): Promise<void> => {
   const { servers } = useServerZustand.getState()
   useServerZustand.setState({ servers: { ...servers, other: { ...getDefaultServer(), port } } })
 }
+
+describe('a config file with a byte swap', () => {
+  it('opens on the client in the order it was saved in, and undo takes it back', async () => {
+    const { client, clientUndo, file } = await loadClient()
+    await client().setType('holding_registers')
+    await client().setByteOrder('DCBA')
+    const saved = file.exportClientConfig()
+    expect(JSON.parse(saved)).toMatchObject({ littleEndian: true, byteSwap: true })
+    await client().setByteOrder('ABCD')
+
+    expect(await file.importClientConfig(saved)).toMatchObject({ ok: true })
+    expect(client().registerConfig).toMatchObject({ littleEndian: true, byteSwap: true })
+    expect(calls).toContainEqual({
+      method: 'updateRegisterConfig',
+      payload: { littleEndian: true, byteSwap: true }
+    })
+
+    expect(await clientUndo.undoClient()).toBe('done')
+    expect(client().registerConfig).toMatchObject({ littleEndian: false, byteSwap: false })
+  })
+
+  it('opens on the server in the order it was saved in, and tells main', async () => {
+    const { server, file } = await loadServer()
+    server().addBool('coils', 3)
+    await server().setByteOrder('BADC')
+    const saved = file.exportServerConfig()
+    if (saved === undefined) throw new Error('the selected server was not exported')
+    expect(JSON.parse(saved)).toMatchObject({ littleEndian: false, byteSwap: true })
+    await server().setByteOrder('ABCD')
+    calls.length = 0
+
+    expect(await file.importServerConfig(saved)).toMatchObject({ ok: true })
+    expect(server().servers[MAIN_SERVER_UUID]).toMatchObject({
+      littleEndian: false,
+      byteSwap: true
+    })
+    expect(calls).toContainEqual({
+      method: 'setServerEndianness',
+      payload: { uuid: MAIN_SERVER_UUID, littleEndian: false, byteSwap: true }
+    })
+  })
+})

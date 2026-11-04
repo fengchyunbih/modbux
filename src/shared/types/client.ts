@@ -12,7 +12,7 @@ import {
 } from './ranges'
 import { RegisterType, RegisterTypeSchema } from './register'
 import { SerialPortOptionsSchema } from './serial'
-import { ReservedByteSwapSchema } from './byteSwap'
+import { ConfigByteSwapSchema } from './byteOrder'
 
 //
 //
@@ -257,6 +257,7 @@ export const RegisterConfigSchema = z.object({
   pollRate: ReadTimingSchema,
   timeout: ReadTimingSchema,
   littleEndian: z.boolean(),
+  byteSwap: z.boolean(),
   advancedMode: z.boolean(),
   show64BitValues: z.boolean(),
   addressBase: z.enum(['0', '1'])
@@ -271,7 +272,10 @@ export type RegisterConfig = z.infer<typeof RegisterConfigSchema>
  * The read settings a client config file carries: the register config without
  * the byte order, which the file keeps at its top level as it did before v3.
  */
-export const ClientConfigReadSettingsSchema = RegisterConfigSchema.omit({ littleEndian: true })
+export const ClientConfigReadSettingsSchema = RegisterConfigSchema.omit({
+  littleEndian: true,
+  byteSwap: true
+})
 export type ClientConfigReadSettings = z.infer<typeof ClientConfigReadSettingsSchema>
 
 /**
@@ -287,7 +291,7 @@ export const RegisterMapConfigSchema = z.object({
   modbuxVersion: z.string(),
   name: z.string().optional(),
   littleEndian: z.boolean(),
-  byteSwap: ReservedByteSwapSchema,
+  byteSwap: ConfigByteSwapSchema,
   connectionConfig: ConnectionConfigSchema.optional(),
   registerConfig: ClientConfigReadSettingsSchema.optional(),
   registerMapping: RegisterMappingSchema

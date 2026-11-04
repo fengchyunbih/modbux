@@ -9,6 +9,8 @@ import {
   ClientZustand
 } from './client.zustand.types'
 import {
+  byteOrderFlags,
+  byteOrderOf,
   defaultConnectionConfig,
   defaultRegisterConfig,
   CURRENT_CLIENT_ZUSTAND_VERSION,
@@ -29,7 +31,7 @@ import { loadSerialPorts } from './serialPorts'
 import { repairPersistedStore } from './repairPersistedStore'
 import { useUndoZustand } from './undo.zustand'
 import { clientFieldReaders, clientFieldSteps } from './undo.zustand.helpers'
-import { ClientField, ClientFieldValues } from './undo.zustand.types'
+import { ClientField, ClientFieldValues, ClientRegisterConfigFields } from './undo.zustand.types'
 
 /**
  * The version the blob on disk carried, set by `migrate` and read once below.
@@ -88,7 +90,7 @@ export const flushRegisterMappingToMain = async (
  * unit's values in the named rows, and after a type change left the rows of
  * the type before it, because `RegisterGrid` redraws the mapping on a change
  * of `readConfiguration` and not of `type`. That is what `setReadConfiguration`
- * does when it is switched on and what `setLittleEndian` does for its own
+ * does when it is switched on and what `setByteOrder` does for its own
  * question.
  *
  * The address and the length change nothing there. `_read` builds its groups
@@ -177,10 +179,10 @@ const setSerialOption = async <Key extends keyof SerialPortOptions>(
  *
  * `addressBase`, `show64BitValues`, `advancedMode`, `pollRate` and `timeout`
  * differ in nothing but the key. The four fields that are not here each end on
- * something more: `address`, `length` and `type` clear the grid, `littleEndian`
+ * something more: `address`, `length` and `type` clear the grid, the byte order
  * reads again, and `length` carries a validity flag as well.
  */
-const setRegisterConfigField = async <Key extends keyof RegisterConfig>(
+const setRegisterConfigField = async <Key extends keyof ClientRegisterConfigFields>(
   set: ClientSet,
   get: () => ClientZustand,
   key: Key,
@@ -193,7 +195,7 @@ const setRegisterConfigField = async <Key extends keyof RegisterConfig>(
   set((state) => {
     state.registerConfig[key] = value
   })
-  recordField<keyof RegisterConfig>(key, before, value)
+  recordField<keyof ClientRegisterConfigFields>(key, before, value)
   return true
 }
 
@@ -520,17 +522,19 @@ export const useClientZustand = create<
         clearRegisterDataWhenIdle(true)
         return true
       },
-      setLittleEndian: async (littleEndian) => {
+      setByteOrder: async (byteOrder) => {
         if (!get().ready) return false
-        const before = get().registerConfig.littleEndian
-        if (!(await window.api.updateRegisterConfig({ littleEndian }))) return false
+        const before = byteOrderOf(get().registerConfig)
+        const { littleEndian, byteSwap } = byteOrderFlags(byteOrder)
+        if (!(await window.api.updateRegisterConfig({ littleEndian, byteSwap }))) return false
 
         set((state) => {
           state.registerConfig.littleEndian = littleEndian
+          state.registerConfig.byteSwap = byteSwap
         })
-        recordField('littleEndian', before, littleEndian)
+        recordField('byteOrder', before, byteOrder)
 
-        // The rows on screen were read in the other word order, and the
+        // The rows on screen were read in the other byte order, and the
         // conversion happens where the reading does, so they stay that way
         // until the next read. An empty grid has nothing to put right.
         if (useDataZustand.getState().registerData.length > 0) readWhenMainCan()

@@ -1,20 +1,22 @@
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
+import { BYTE_ORDER_OPTIONS } from '@renderer/components/shared/inputs/byteOrderOptions'
 import EndianTable from '@renderer/components/shared/inputs/EndianTable'
 import { meme } from '@renderer/components/shared/inputs/meme'
 import { useClientZustand } from '@renderer/context/client.zustand'
 import { useCallback } from 'react'
-import { isNumberRegister } from '@shared'
+import { ByteOrder, byteOrderOf, isNumberRegister } from '@shared'
 
 const ToggleEndianButton = meme((): JSX.Element | null => {
   const type = useClientZustand((z) => z.registerConfig.type)
   const littleEndian = useClientZustand((z) => z.registerConfig.littleEndian)
+  const byteSwap = useClientZustand((z) => z.registerConfig.byteSwap)
 
-  const handleChange = useCallback((_event: unknown, value: boolean | null): void => {
+  const handleChange = useCallback((_event: unknown, value: ByteOrder | null): void => {
     if (value === null) return
     const clientZustand = useClientZustand.getState()
-    clientZustand.setLittleEndian(value)
+    clientZustand.setByteOrder(value)
   }, [])
 
   const registers16Bit = isNumberRegister(type)
@@ -31,20 +33,20 @@ const ToggleEndianButton = meme((): JSX.Element | null => {
         size="small"
         exclusive
         color="primary"
-        value={littleEndian}
+        value={byteOrderOf({ littleEndian, byteSwap })}
         onChange={handleChange}
       >
-        <ToggleButton
-          data-testid="endian-be-btn"
-          aria-label="Big Endian"
-          value={false}
-          sx={{ whiteSpace: 'nowrap' }}
-        >
-          BE
-        </ToggleButton>
-        <ToggleButton data-testid="endian-le-btn" aria-label="Little Endian" value={true}>
-          LE
-        </ToggleButton>
+        {BYTE_ORDER_OPTIONS.map(({ order, testId }) => (
+          <ToggleButton
+            key={order}
+            data-testid={`endian-${testId}-btn`}
+            aria-label={order}
+            value={order}
+            sx={{ fontFamily: 'monospace', px: 1 }}
+          >
+            {order}
+          </ToggleButton>
+        ))}
       </ToggleButtonGroup>
     </Tooltip>
   )

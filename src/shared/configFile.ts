@@ -76,13 +76,13 @@ export const buildClientConfig = (source: ClientConfigSource): RegisterMapConfig
     }
   }
 
-  const { littleEndian, ...readSettings } = source.registerConfig
+  const { littleEndian, byteSwap, ...readSettings } = source.registerConfig
   return {
     version: CURRENT_CLIENT_CONFIG_VERSION,
     modbuxVersion: source.modbuxVersion,
     name: source.name,
     littleEndian,
-    byteSwap: false,
+    byteSwap,
     connectionConfig: source.connectionConfig,
     registerConfig: readSettings,
     registerMapping
@@ -94,6 +94,7 @@ export interface ServerConfigSource {
   modbuxVersion: string
   name: string
   littleEndian: boolean
+  byteSwap: boolean
   port: number
   registers: ServerRegistersPerUnit
 }
@@ -118,7 +119,7 @@ export const buildServerConfig = (source: ServerConfigSource): ServerConfig => {
     modbuxVersion: source.modbuxVersion,
     name: source.name,
     littleEndian: source.littleEndian,
-    byteSwap: false,
+    byteSwap: source.byteSwap,
     port: source.port,
     serverRegistersPerUnit
   }

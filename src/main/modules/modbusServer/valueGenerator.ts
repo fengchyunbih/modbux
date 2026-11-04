@@ -1,4 +1,5 @@
 import {
+  ByteOrderFlags,
   DEFAULT_UTF8_LENGTH,
   NumberRegisters,
   RegisterParamsGeneratorPart,
@@ -19,7 +20,7 @@ type ValueGeneratorParams = {
   unitId: UnitIdString
   windows: Windows
   serverData: ServerData
-  littleEndian: boolean
+  order: ByteOrderFlags
   // `ServerRegistry.addRegister` answers `none` before it gets here, because an
   // address held open with nothing in it has nothing to generate.
   dataType: ValuedDataType
@@ -40,7 +41,7 @@ export class ValueGenerator implements RegisterValueGenerator {
   private _dataType: ValuedDataType
   private _min: number
   private _max: number
-  private _littleEndian: boolean
+  private _order: ByteOrderFlags
   private _interval: number
   private _comment: string
   private _stringValue: string
@@ -61,7 +62,7 @@ export class ValueGenerator implements RegisterValueGenerator {
     dataType,
     min,
     max,
-    littleEndian,
+    order,
     interval,
     comment,
     stringValue,
@@ -75,7 +76,7 @@ export class ValueGenerator implements RegisterValueGenerator {
     this._dataType = dataType
     this._min = min
     this._max = max
-    this._littleEndian = littleEndian
+    this._order = order
     this._registerType = registerType
     this._interval = interval
     this._comment = comment
@@ -116,7 +117,7 @@ export class ValueGenerator implements RegisterValueGenerator {
       registers: encodeRegisters({
         dataType: this._dataType,
         value,
-        littleEndian: this._littleEndian,
+        order: this._order,
         stringValue: this._stringValue,
         length: this._length
       })

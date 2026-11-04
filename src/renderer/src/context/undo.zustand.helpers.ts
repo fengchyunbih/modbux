@@ -1,4 +1,4 @@
-import { ServerRegisters } from '@shared'
+import { byteOrderOf, ServerRegisters } from '@shared'
 import { ClientZustand } from './client.zustand.types'
 import {
   ClientField,
@@ -28,7 +28,7 @@ export const clientFieldReaders: {
   type: (state) => state.registerConfig.type,
   pollRate: (state) => state.registerConfig.pollRate,
   timeout: (state) => state.registerConfig.timeout,
-  littleEndian: (state) => state.registerConfig.littleEndian,
+  byteOrder: (state) => byteOrderOf(state.registerConfig),
   advancedMode: (state) => state.registerConfig.advancedMode,
   show64BitValues: (state) => state.registerConfig.show64BitValues,
   addressBase: (state) => state.registerConfig.addressBase
@@ -53,7 +53,7 @@ export const clientFieldSteps: {
   type: (value) => ({ kind: 'field', field: 'type', value }),
   pollRate: (value) => ({ kind: 'field', field: 'pollRate', value }),
   timeout: (value) => ({ kind: 'field', field: 'timeout', value }),
-  littleEndian: (value) => ({ kind: 'field', field: 'littleEndian', value }),
+  byteOrder: (value) => ({ kind: 'field', field: 'byteOrder', value }),
   advancedMode: (value) => ({ kind: 'field', field: 'advancedMode', value }),
   show64BitValues: (value) => ({ kind: 'field', field: 'show64BitValues', value }),
   addressBase: (value) => ({ kind: 'field', field: 'addressBase', value })
@@ -98,7 +98,7 @@ export const serverStepKey = (step: ServerUndoStep): string | undefined => {
     case 'server':
     case 'unit':
     case 'bool':
-    case 'littleEndian':
+    case 'byteOrder':
       return undefined
   }
 }

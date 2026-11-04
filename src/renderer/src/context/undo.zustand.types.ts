@@ -1,5 +1,6 @@
 import {
   BooleanRegisters,
+  ByteOrder,
   ConnectionConfig,
   Parity,
   RegisterConfig,
@@ -19,8 +20,16 @@ import { PersistedServer } from './server.zustand.types'
  * carries none, and it is read here as the `none` a missing one means. A step
  * holding `undefined` would be put back as `none` and never compare equal.
  */
-export type ClientFieldValues = RegisterConfig &
+/**
+ * The register config fields a step holds one by one. The byte order is two
+ * flags in the store and one `byteOrder` step, so picking DCBA over ABCD is one
+ * undo rather than two.
+ */
+export type ClientRegisterConfigFields = Omit<RegisterConfig, 'littleEndian' | 'byteSwap'>
+
+export type ClientFieldValues = ClientRegisterConfigFields &
   Omit<SerialPortOptions, 'parity'> & {
+    byteOrder: ByteOrder
     parity: Parity
     name: string
     protocol: ConnectionConfig['protocol']
@@ -136,10 +145,10 @@ export interface ServerPortStep {
   value: string
 }
 
-export interface ServerLittleEndianStep {
-  kind: 'littleEndian'
+export interface ServerByteOrderStep {
+  kind: 'byteOrder'
   uuid: string
-  value: boolean
+  value: ByteOrder
 }
 
 export type ServerUndoStep =
@@ -148,7 +157,7 @@ export type ServerUndoStep =
   | ServerBoolStep
   | ServerNameStep
   | ServerPortStep
-  | ServerLittleEndianStep
+  | ServerByteOrderStep
 
 /**
  * The steps of one store, oldest first.

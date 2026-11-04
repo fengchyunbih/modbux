@@ -166,6 +166,7 @@ describe('a config written before the unit map was left empty', () => {
               port: '502',
               unitId: '0',
               littleEndian: false,
+              byteSwap: false,
               registers: { '0': registers, '1': registers },
               usedAddresses: { '0': {}, '1': {} }
             }

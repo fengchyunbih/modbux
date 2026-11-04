@@ -58,7 +58,8 @@ export const applyClientConfig = async (
       connectionConfig: config.connectionConfig ?? current.connectionConfig,
       registerConfig: {
         ...(config.registerConfig ?? current.registerConfig),
-        littleEndian: config.littleEndian
+        littleEndian: config.littleEndian,
+        byteSwap: config.byteSwap ?? false
       },
       registerMapping: config.registerMapping
     })

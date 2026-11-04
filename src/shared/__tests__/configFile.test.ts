@@ -35,6 +35,7 @@ const readSettings: RegisterConfig = {
   pollRate: 3000,
   timeout: 2000,
   littleEndian: true,
+  byteSwap: true,
   advancedMode: true,
   show64BitValues: true,
   addressBase: '1'
@@ -89,8 +90,13 @@ describe('a client config file', () => {
     expect(parsed.config.modbuxVersion).toBe('9.9.9')
     expect(parsed.config.name).toBe('boiler')
     expect(parsed.config.littleEndian).toBe(true)
+    expect(parsed.config.byteSwap).toBe(true)
     expect(parsed.config.connectionConfig).toEqual(connection)
-    expect(parsed.config.registerConfig).toEqual({ ...readSettings, littleEndian: undefined })
+    expect(parsed.config.registerConfig).toEqual({
+      ...readSettings,
+      littleEndian: undefined,
+      byteSwap: undefined
+    })
     expect(parsed.config.registerMapping.holding_registers[0]).toEqual({
       dataType: 'int16',
       comment: 'setpoint'
@@ -121,6 +127,7 @@ describe('a client config file', () => {
         modbuxVersion: '9.9.9',
         name: '',
         littleEndian: false,
+        byteSwap: false,
         port: 502,
         registers: {}
       })
@@ -140,6 +147,7 @@ describe('a server config file', () => {
         modbuxVersion: '9.9.9',
         name: 'meter',
         littleEndian: true,
+        byteSwap: true,
         port: 1502,
         registers: { '3': unitWithOneRegister() }
       })
@@ -150,6 +158,7 @@ describe('a server config file', () => {
     expect(parsed.config.version).toBe(CURRENT_SERVER_CONFIG_VERSION)
     expect(parsed.config.name).toBe('meter')
     expect(parsed.config.littleEndian).toBe(true)
+    expect(parsed.config.byteSwap).toBe(true)
     expect(parsed.config.port).toBe(1502)
     expect(parsed.config.serverRegistersPerUnit['3']).toEqual(unitWithOneRegister())
   })
@@ -160,6 +169,7 @@ describe('a server config file', () => {
         modbuxVersion: '9.9.9',
         name: 'meter',
         littleEndian: false,
+        byteSwap: false,
         port: 502,
         registers: { '0': emptyUnit(), '3': unitWithOneRegister() }
       })
@@ -191,6 +201,7 @@ const editedServerFile = (edit: (file: Record<string, unknown>) => void): string
       modbuxVersion: '9.9.9',
       name: 'meter',
       littleEndian: false,
+      byteSwap: false,
       port: 1502,
       registers: { '0': unitWithOneRegister() }
     })
@@ -201,9 +212,7 @@ const editedServerFile = (edit: (file: Record<string, unknown>) => void): string
 
 const byteSwapRefusal = {
   ok: false,
-  error: expect.stringContaining(
-    'byteSwap: byte swap (BADC or DCBA) is not supported by this version of Modbux'
-  )
+  error: expect.stringContaining('byteSwap: Expected boolean, received string')
 }
 
 describe('a client config file from v2', () => {
@@ -239,26 +248,44 @@ describe('a client config file from v2', () => {
   })
 })
 
-describe('a client config file asking for a byte swap', () => {
-  it('opens without the field, and with it false', () => {
+describe('a client config file and its byte swap', () => {
+  it('opens without the field or with it false, as a file from before byte swap did', () => {
     const absent = parseClientConfig(editedClientFile((file) => delete file.byteSwap))
     const off = parseClientConfig(editedClientFile((file) => (file.byteSwap = false)))
 
     expect(absent).toMatchObject({ ok: true, config: { littleEndian: true } })
-    expect(off).toMatchObject({ ok: true, config: { littleEndian: true } })
+    expect(absent).not.toHaveProperty('config.byteSwap')
+    expect(off).toMatchObject({ ok: true, config: { littleEndian: true, byteSwap: false } })
   })
 
   it.each([
     ['this version', CURRENT_CLIENT_CONFIG_VERSION],
-    ['v2, whose step to v3 names its fields', 2],
     ['a newer Modbux, whose fields are repaired one by one', 9]
-  ])('is refused by name from %s', (_from, version) => {
+  ])('opens with it true from %s', (_from, version) => {
     const parsed = parseClientConfig(
       editedClientFile((file) => {
         file.version = version
         file.byteSwap = true
       })
     )
+
+    expect(parsed).toMatchObject({ ok: true, config: { littleEndian: true, byteSwap: true } })
+  })
+
+  it('drops it from a hand-edited v2 file, which v2 never wrote', () => {
+    const parsed = parseClientConfig(
+      editedClientFile((file) => {
+        file.version = 2
+        file.byteSwap = true
+      })
+    )
+
+    if (!parsed.ok) throw new Error(parsed.error)
+    expect(parsed.config.byteSwap).toBeUndefined()
+  })
+
+  it('is refused by name when it is not a boolean', () => {
+    const parsed = parseClientConfig(editedClientFile((file) => (file.byteSwap = 'yes')))
 
     expect(parsed).toEqual(byteSwapRefusal)
   })
@@ -320,18 +347,39 @@ describe('a server config file from v3', () => {
   })
 })
 
-describe('a server config file asking for a byte swap', () => {
-  it.each([
-    ['this version', CURRENT_SERVER_CONFIG_VERSION],
-    ['v3, whose step to v4 drops nothing it does not name', 3],
-    ['a newer Modbux, whose fields are repaired one by one', 9]
-  ])('is refused by name from %s', (_from, version) => {
+describe('a server config file and its byte swap', () => {
+  it('opens with it true from a newer Modbux, whose fields are repaired one by one', () => {
     const parsed = parseServerConfig(
       editedServerFile((file) => {
-        file.version = version
+        file.version = 9
         file.byteSwap = true
       })
     )
+
+    expect(parsed).toMatchObject({ ok: true, config: { byteSwap: true } })
+  })
+
+  it('opens without the field, as a file from before byte swap did', () => {
+    const parsed = parseServerConfig(editedServerFile((file) => delete file.byteSwap))
+
+    if (!parsed.ok) throw new Error(parsed.error)
+    expect(parsed.config.byteSwap).toBeUndefined()
+  })
+
+  it('drops it from a hand-edited v3 file, which v3 never wrote', () => {
+    const parsed = parseServerConfig(
+      editedServerFile((file) => {
+        file.version = 3
+        file.byteSwap = true
+      })
+    )
+
+    if (!parsed.ok) throw new Error(parsed.error)
+    expect(parsed.config.byteSwap).toBeUndefined()
+  })
+
+  it('is refused by name when it is not a boolean', () => {
+    const parsed = parseServerConfig(editedServerFile((file) => (file.byteSwap = 'yes')))
 
     expect(parsed).toEqual(byteSwapRefusal)
   })

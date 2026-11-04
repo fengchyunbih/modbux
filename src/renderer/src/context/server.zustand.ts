@@ -10,6 +10,8 @@ import {
 import { mutative } from 'zustand-mutative'
 import { persist } from 'zustand/middleware'
 import {
+  byteOrderFlags,
+  byteOrderOf,
   DEFAULT_MODBUS_PORT,
   getUsedAddresses,
   MAIN_SERVER_UUID,
@@ -608,23 +610,27 @@ export const useServerZustand = create<
           if (server) server.unitId = unitId
         })
       },
-      setLittleEndian: async (littleEndian) => {
+      setByteOrder: async (byteOrder) => {
         const currentState = get()
         const uuid = currentState.selectedUuid
         if (!currentState.ready[uuid]) return false
 
-        const before = currentState.servers[uuid]?.littleEndian
+        const server = currentState.servers[uuid]
+        const before = server && byteOrderOf(server)
+        const { littleEndian, byteSwap } = byteOrderFlags(byteOrder)
         set((state) => {
           const server = state.servers[uuid]
-          if (server) server.littleEndian = littleEndian
+          if (!server) return
+          server.littleEndian = littleEndian
+          server.byteSwap = byteSwap
         })
-        if (before !== undefined && before !== littleEndian) {
-          useUndoZustand.getState().recordServer({ kind: 'littleEndian', uuid, value: before })
+        if (before !== undefined && before !== byteOrder) {
+          useUndoZustand.getState().recordServer({ kind: 'byteOrder', uuid, value: before })
         }
 
         // Told before the registers are sent, because main encodes them with
         // the order it holds at that moment.
-        await window.api.setServerEndianness({ uuid, littleEndian })
+        await window.api.setServerEndianness({ uuid, littleEndian, byteSwap })
 
         const serverRegisters = currentState.servers[uuid]?.registers
         if (!serverRegisters) return true
@@ -838,8 +844,12 @@ export const applyRegisterValue = (payload: RegisterValue): void => {
   const cacheKey = batchKey(uuid, unitId, registerType, entryAddress)
   const currentValue = delayedRegister.getValue(cacheKey) ?? serverRegisterEntry.value
   const { dataType } = serverRegisterEntry.params
-  // Get littleEndian from global server state
-  const littleEndian = serverZustand.servers[uuid]?.littleEndian ?? false
+  // The byte order belongs to the server rather than to the register
+  const server = serverZustand.servers[uuid]
+  const order = {
+    littleEndian: server?.littleEndian ?? false,
+    byteSwap: server?.byteSwap ?? false
+  }
 
   // Skip composite merging for types that don't use numeric compositing
   if (dataType === 'utf8') return // Strings: no composite value
@@ -856,7 +866,7 @@ export const applyRegisterValue = (payload: RegisterValue): void => {
   const folded = foldWordIntoComposite({
     currentValue,
     dataType,
-    littleEndian,
+    order,
     offsetRegisters,
     word: numberValue
   })
@@ -907,7 +917,7 @@ let serverWindowOwnsTheKey = false
  * `ready` is not in `partialize`, so a rehydrate brings back `servers` and
  * `selectedUuid` and leaves this window's own `ready` where `init` left it.
  * A server made in the split out window therefore came back with no entry, and
- * `setPort`, `setUnitId` and `setLittleEndian` each refuse on that with no
+ * `setPort`, `setUnitId` and `setByteOrder` each refuse on that with no
  * message, until a restart. The window that made it ran `createServer` for it,
  * so main does know it.
  *

@@ -655,15 +655,21 @@ export async function scrollCell(p: Page, rowId: number, field: string): Promise
   return cell(p, rowId, field)
 }
 
+/**
+ * The byte order buttons by the suffix of their `data-testid`: `be` is ABCD,
+ * `le` is CDAB, and `badc` and `dcba` are the two that swap bytes.
+ */
+export type Endian = 'be' | 'le' | 'badc' | 'dcba'
+
 /** Set server endianness (must be on the server view) */
-export async function setServerEndianness(p: Page, endian: 'be' | 'le'): Promise<void> {
+export async function setServerEndianness(p: Page, endian: Endian): Promise<void> {
   const btn = p.getByTestId(`server-endian-${endian}-btn`)
   await btn.click()
   await expect(btn).toHaveClass(/Mui-selected/)
 }
 
 /** Set client endianness (must be on the client view) */
-export async function setClientEndianness(p: Page, endian: 'be' | 'le'): Promise<void> {
+export async function setClientEndianness(p: Page, endian: Endian): Promise<void> {
   const btn = p.getByTestId(`endian-${endian}-btn`)
   await btn.click()
   await expect(btn).toHaveClass(/Mui-selected/)

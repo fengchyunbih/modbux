@@ -54,6 +54,7 @@ export const exportProject = (): string => {
           modbuxVersion,
           name: server.name ?? '',
           littleEndian: server.littleEndian,
+          byteSwap: server.byteSwap,
           port: Number(server.port),
           registers: server.registers
         }

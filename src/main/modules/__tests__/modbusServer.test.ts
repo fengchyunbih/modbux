@@ -524,7 +524,7 @@ describe('ModbusServer', () => {
      * time. Until it is told, a register is big-endian.
      */
     it('swaps the words of a 32-bit value once the server is told', () => {
-      server.setEndianness({ uuid, littleEndian: true })
+      server.setEndianness({ uuid, littleEndian: true, byteSwap: false })
 
       server.addRegister({
         uuid,
@@ -554,8 +554,39 @@ describe('ModbusServer', () => {
       )
     })
 
+    it('swaps the bytes inside each word of a 32-bit value once the server is told', () => {
+      server.setEndianness({ uuid, littleEndian: false, byteSwap: true })
+
+      server.addRegister({
+        uuid,
+        unitId,
+        params: {
+          address: 10,
+          registerType: 'holding_registers',
+          dataType: 'int32',
+          comment: '',
+          value: 70000,
+          min: undefined,
+          max: undefined,
+          interval: undefined
+        }
+      })
+
+      // 70000 = 0x00011170, BADC
+      expect(windows.send).toHaveBeenCalledWith(
+        'register_value',
+        expect.objectContaining({ address: 10, value: 0x0100 }),
+        'serverView'
+      )
+      expect(windows.send).toHaveBeenCalledWith(
+        'register_value',
+        expect.objectContaining({ address: 11, value: 0x7011 }),
+        'serverView'
+      )
+    })
+
     it('goes back to big-endian for a server built again on the same uuid', async () => {
-      server.setEndianness({ uuid, littleEndian: true })
+      server.setEndianness({ uuid, littleEndian: true, byteSwap: false })
       await server.createServer({ uuid, port: 5020 })
       await server.deleteServer(uuid)
 

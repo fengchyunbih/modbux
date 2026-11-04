@@ -1,4 +1,5 @@
 import {
+  ByteOrderFlags,
   AddRegisterParams,
   RegisterType,
   RegisterValue,
@@ -72,13 +73,13 @@ export class ServerRegistry {
   private _onUnitData: (uuid: string) => void
 
   /**
-   * The byte order each server encodes its registers in, big-endian until told.
+   * The byte order each server encodes its registers in, ABCD until told.
    *
    * It is set once here and read where a register is encoded, rather than
    * riding along on every add and every sync, which is the same field of the
    * same server read again each time.
    */
-  private _littleEndian: Map<string, boolean> = new Map()
+  private _byteOrder: Map<string, ByteOrderFlags> = new Map()
   private _serverData: ServerDataMap = new Map()
   private _generatorMap: ValueGeneratorsMap = new Map()
 
@@ -199,7 +200,7 @@ export class ServerRegistry {
   /** Frees everything a uuid holds, which is what deleting a server does. */
   public deleteUuid(uuid: string): void {
     this.clearData(uuid)
-    this._littleEndian.delete(uuid)
+    this._byteOrder.delete(uuid)
   }
 
   /**
@@ -216,8 +217,8 @@ export class ServerRegistry {
   }
 
   /** Sets the byte order this server encodes its registers in. */
-  public setEndianness = ({ uuid, littleEndian }: ServerEndianness): void => {
-    this._littleEndian.set(uuid, littleEndian)
+  public setEndianness = ({ uuid, littleEndian, byteSwap }: ServerEndianness): void => {
+    this._byteOrder.set(uuid, { littleEndian, byteSwap })
   }
 
   /**
@@ -248,7 +249,7 @@ export class ServerRegistry {
    * one no input turns red.
    */
   public addRegister = ({ uuid, unitId, params }: AddRegisterParams): number[] | undefined => {
-    const littleEndian = this._littleEndian.get(uuid) ?? false
+    const order = this._byteOrder.get(uuid) ?? { littleEndian: false, byteSwap: false }
     const {
       address,
       registerType,
@@ -299,7 +300,7 @@ export class ServerRegistry {
       // `undefined` and the store reads that as nothing changed. Disposing
       // first would zero the words of the generator being replaced and drop it,
       // leaving the grid drawing a generator that does not run.
-      const registers = this._encode({ dataType, value, littleEndian, stringValue, length })
+      const registers = this._encode({ dataType, value, order, stringValue, length })
       if (!registers) {
         emitServerMessage(this._windows, {
           message: `The ${dataType} register at ${address} was not added: main cannot encode that value`,
@@ -336,7 +337,7 @@ export class ServerRegistry {
         min,
         max,
         interval,
-        littleEndian,
+        order,
         registerType,
         comment,
         stringValue,

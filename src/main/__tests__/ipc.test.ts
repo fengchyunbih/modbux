@@ -568,7 +568,7 @@ describe('each guarded channel got its own schema', () => {
     set_server_port: { uuid: 'server-1', port: 5020 },
     create_server: { uuid: 'server-1', port: 5020 },
     apply_privileged_port_fix: 'persist',
-    set_server_endianness: { uuid: 'server-1', littleEndian: true },
+    set_server_endianness: { uuid: 'server-1', littleEndian: true, byteSwap: true },
     delete_server: 'server-1',
     reset_server: 'server-1'
   }

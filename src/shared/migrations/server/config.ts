@@ -13,7 +13,6 @@ import {
   dropUnservableConfigRegisters,
   isRecord,
   parseConfigFile,
-  refuseByteSwap,
   refuseOtherSidesConfig,
   renameLegacyRegisterTypeKeys,
   stringifyExact64BitValues
@@ -148,11 +147,12 @@ function migrateServerV2toV3(v2Config: unknown): ServerConfig {
 }
 
 /**
- * Migrate server config from v3 to v4: a file may carry the port, and reserves
+ * Migrate server config from v3 to v4: a file may carry the port and
  * `byteSwap`.
  *
- * A v3 file has neither. A hand-edited v3 file carrying a `port` does not
- * apply it, so opening the result keeps the port the server listens on. The
+ * A v3 file has neither. A hand-edited v3 file carrying either does not apply
+ * it, so opening the result keeps the port the server listens on and reads in
+ * ABCD or CDAB, as the v2 to v3 client step does. The
  * rest of the blob is kept as it is, because `wasMixedEndianness` from the v1
  * step rides on it to the end of `migrateServerConfig`.
  *
@@ -163,6 +163,7 @@ function migrateServerV2toV3(v2Config: unknown): ServerConfig {
 function migrateServerV3toV4(v3Config: unknown): ServerConfig {
   const config: Record<string, unknown> = { ...(v3Config as Record<string, unknown>), version: 4 }
   delete config.port
+  delete config.byteSwap
   migrateBoolShapeInConfig(config.serverRegistersPerUnit)
   stringifyExact64BitValues({ servers: { config: { registers: config.serverRegistersPerUnit } } })
   return config as ServerConfig
@@ -184,7 +185,6 @@ function migrateBoolShapeInConfig(serverRegistersPerUnit: unknown): void {
 export function migrateServerConfig(raw: string): MigrationResult<ServerConfig> {
   const { parsed, detectedVersion } = parseConfigFile(raw)
   refuseOtherSidesConfig(parsed, 'server')
-  refuseByteSwap(parsed)
 
   // Current version - migrate bool shape if needed, then validate
   if (detectedVersion === CURRENT_SERVER_CONFIG_VERSION) {

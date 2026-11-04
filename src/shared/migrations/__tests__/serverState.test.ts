@@ -81,6 +81,7 @@ describe('the migration a server store blob runs', () => {
       unitId: '7',
       name: 'bench',
       littleEndian: true,
+      byteSwap: false,
       registers: {},
       usedAddresses: {}
     })

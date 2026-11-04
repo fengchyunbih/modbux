@@ -6,7 +6,6 @@ import {
   dropUnreadableConfigMapping,
   formatZodError,
   parseConfigFile,
-  refuseByteSwap,
   refuseOtherSidesConfig,
   renameLegacyRegisterTypeKeys
 } from '../shared'
@@ -50,7 +49,7 @@ function migrateClientV1toV2(v1Config: unknown): RegisterMapConfig {
 
 /**
  * Migrate client config from v2 to v3: a file may carry connection and read
- * settings, and reserves `byteSwap`.
+ * settings, and `byteSwap`.
  *
  * A v2 file has none of them, and the step names the v2 fields one by one
  * rather than spreading the file, so a hand-edited v2 file carrying a
@@ -74,7 +73,6 @@ function migrateClientV2toV3(v2Config: unknown): RegisterMapConfig {
 export function migrateClientConfig(raw: string): MigrationResult<RegisterMapConfig> {
   const { parsed, detectedVersion } = parseConfigFile(raw)
   refuseOtherSidesConfig(parsed, 'client')
-  refuseByteSwap(parsed)
 
   // Current version - no migration needed
   if (detectedVersion === CURRENT_CLIENT_CONFIG_VERSION) {

@@ -84,6 +84,7 @@ const FIELD_LABELS: Record<string, string> = {
   usedAddresses: 'the used addresses',
   unitId: 'the unit ids',
   littleEndian: 'the endianness',
+  byteSwap: 'the byte swap',
   serverMode: 'the server mode',
   serialConfig: 'the serial settings'
 }

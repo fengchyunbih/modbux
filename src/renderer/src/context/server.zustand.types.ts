@@ -1,4 +1,5 @@
 import {
+  ByteOrder,
   RemoveRegisterParams,
   BooleanRegisters,
   NumberRegisters,
@@ -40,6 +41,7 @@ export const PersistedServerSchema = z.object({
   unitId: UnitIdStringSchema,
   name: z.string().optional(),
   littleEndian: z.boolean(),
+  byteSwap: z.boolean(),
   registers: ServerRegistersPerUnitSchema,
   usedAddresses: z.record(UnitIdStringSchema, UsedAddressesSchema)
 })
@@ -85,7 +87,7 @@ export type ServerZustand = {
   acknowledgeConfigReset: () => void
   /**
    * Whether main knows this uuid, which is what `setPort`, `setUnitId` and
-   * `setLittleEndian` refuse on: a port main has not bound is a port nothing
+   * `setByteOrder` refuse on: a port main has not bound is a port nothing
    * can be changed about.
    *
    * Written by `syncUuidToBackend`, by `createServer`, and by the
@@ -142,11 +144,11 @@ export type ServerZustand = {
   // that need the result -- the privileged port modal -- can await it.
   // Answers whether the server now holds the port asked for. `createServer`
   // answers whether a server stands, on whichever port main found free,
-  // `setLittleEndian` whether the server was ready, and `addBool` and
+  // `setByteOrder` whether the server was ready, and `addBool` and
   // `removeBool` whether they changed anything.
   setPort: AsyncMaskSetFn
   setUnitId: MaskSetFn<UnitIdString>
-  setLittleEndian: (value: boolean) => Promise<boolean>
+  setByteOrder: (value: ByteOrder) => Promise<boolean>
   // Replace
   replaceServerRegisters: (unitId: UnitIdString, registers: ServerRegisters) => void
   setName: (name: string) => void

@@ -173,14 +173,14 @@ describe('the server byte order', () => {
   it('answers true for a ready server', async () => {
     const useServerZustand = await loadServer()
 
-    expect(await useServerZustand.getState().setLittleEndian(true)).toBe(true)
+    expect(await useServerZustand.getState().setByteOrder('CDAB')).toBe(true)
   })
 
   it('answers false for a server that is not ready', async () => {
     const useServerZustand = await loadServer()
     useServerZustand.setState({ ready: { [MAIN_SERVER_UUID]: false } })
 
-    expect(await useServerZustand.getState().setLittleEndian(true)).toBe(false)
+    expect(await useServerZustand.getState().setByteOrder('CDAB')).toBe(false)
   })
 })
 

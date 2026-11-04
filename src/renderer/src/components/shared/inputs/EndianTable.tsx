@@ -9,16 +9,44 @@ import { tableCellClasses } from '@mui/material/TableCell'
 import { meme } from './meme'
 
 /**
- * What BE and LE do to one value, shown rather than described.
+ * What the four byte orders do to one value, shown rather than described.
  *
- * This hangs off the BE/LE toggle as a tooltip, so it competes with the app
- * behind it and has to stay readable at a glance. The question a user has is
- * which half of a 32-bit value lands in the first register, and two rows
- * answer it.
+ * This hangs off the byte order toggle as a tooltip, so it competes with the
+ * app behind it and has to stay readable at a glance. The question a user has
+ * is which bytes of a 32-bit value land in the first register, and one row per
+ * order answers it.
  *
  * The hex carries the same monospace and colour as the HEX column in the
  * register grid, so a value looks the same wherever it appears.
  */
+
+/** 0x12345678 in each order, and the SCL that writes it from a Siemens PLC. */
+const ROWS: readonly { order: string; register0: string; register1: string; scl: string }[] = [
+  {
+    order: 'ABCD',
+    register0: '0x1234',
+    register1: '0x5678',
+    scl: 'reg[0] := dWord.W1; reg[1] := dWord.W0;'
+  },
+  {
+    order: 'CDAB',
+    register0: '0x5678',
+    register1: '0x1234',
+    scl: 'reg[0] := dWord.W0; reg[1] := dWord.W1;'
+  },
+  {
+    order: 'BADC',
+    register0: '0x3412',
+    register1: '0x7856',
+    scl: 'reg[0] := SWAP(dWord.W1); reg[1] := SWAP(dWord.W0);'
+  },
+  {
+    order: 'DCBA',
+    register0: '0x7856',
+    register1: '0x3412',
+    scl: 'reg[0] := SWAP(dWord.W0); reg[1] := SWAP(dWord.W1);'
+  }
+]
 
 const Hex = meme(
   ({ children }: { children: string }): JSX.Element => (
@@ -67,36 +95,29 @@ const EndianTable = meme(
           </TableRow>
         </TableHead>
         <TableBody>
-          <TableRow>
-            <TableCell>Big-Endian</TableCell>
-            <TableCell>
-              <Hex>0x1234</Hex> high
-            </TableCell>
-            <TableCell>
-              <Hex>0x5678</Hex> low
-            </TableCell>
-            <TableCell align="right">
-              <Hex>reg[0] := dWord.W1; reg[1] := dWord.W0;</Hex>
-            </TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>Little-Endian</TableCell>
-            <TableCell>
-              <Hex>0x5678</Hex> low
-            </TableCell>
-            <TableCell>
-              <Hex>0x1234</Hex> high
-            </TableCell>
-            <TableCell align="right">
-              <Hex>reg[0] := dWord.W0; reg[1] := dWord.W1;</Hex>
-            </TableCell>
-          </TableRow>
+          {ROWS.map(({ order, register0, register1, scl }) => (
+            <TableRow key={order}>
+              <TableCell>
+                <Hex>{order}</Hex>
+              </TableCell>
+              <TableCell>
+                <Hex>{register0}</Hex>
+              </TableCell>
+              <TableCell>
+                <Hex>{register1}</Hex>
+              </TableCell>
+              <TableCell align="right">
+                <Hex>{scl}</Hex>
+              </TableCell>
+            </TableRow>
+          ))}
         </TableBody>
       </Table>
 
       <Typography variant="caption" sx={{ display: 'block', mt: 1, opacity: 0.7 }}>
-        Big-Endian puts the high word first and is what most devices use. Pick the one your device
-        uses, or every 32-bit value reads as nonsense.
+        ABCD puts the high word and the high byte first and is what most devices use. Pick the one
+        your device uses, or every 32-bit and 64-bit value reads as nonsense. 16-bit values read the
+        same in all four.
       </Typography>
     </Paper>
   )

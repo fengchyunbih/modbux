@@ -29,6 +29,7 @@ const store = (addresses: number[]): string =>
           name: 'bench',
           unitId: '0',
           littleEndian: false,
+          byteSwap: false,
           usedAddresses: {},
           registers: {
             '0': {
@@ -55,6 +56,7 @@ const withSecondServer = (raw: string, uuid: string): string => {
     port: '503',
     unitId: '0',
     littleEndian: false,
+    byteSwap: false,
     registers: {},
     usedAddresses: {}
   }
@@ -108,7 +110,7 @@ describe('the server window closing', () => {
   })
 
   // `ready` is not persisted either, so the rehydrate brought a uuid back with
-  // no entry, and `setPort`, `setUnitId` and `setLittleEndian` each refuse on
+  // no entry, and `setPort`, `setUnitId` and `setByteOrder` each refuse on
   // that with no message. The window that made the server ran `createServer`
   // for it, so main does know it.
   it('marks a server the split out window made as one main knows', async () => {

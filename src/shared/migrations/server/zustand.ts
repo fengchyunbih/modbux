@@ -1,6 +1,7 @@
 import { defaultSerialPortOptions } from '../../default'
 import { V1RegisterParams, V1ServerRegistersPerUnit, extractGlobalEndianness } from './v1'
 import {
+  addAbsentByteSwap,
   dropUnservableRegisters,
   isRecord,
   migrateBoolShapeForUnit,
@@ -9,13 +10,11 @@ import {
 } from '../shared'
 
 /**
- * One number above what the last release wrote, whatever this branch changes.
- *
- * 2.3.0 shipped 3, and nobody outside this branch has a store carrying 4
- * through 8. A number per change was five migration steps no launch will ever
- * run, so the steps between are one step from 3.
+ * 2.3.0 shipped 3. The changes before 4 are one step from 3, because a number
+ * per change was five migration steps no launch would run. This fork's own
+ * builds have written 4 since, so `byteSwap` is a step from 4.
  */
-export const CURRENT_SERVER_ZUSTAND_VERSION = 4
+export const CURRENT_SERVER_ZUSTAND_VERSION = 5
 
 /** Where the server store keeps its state. */
 export const SERVER_ZUSTAND_STORAGE_KEY = 'server.zustand'
@@ -207,8 +206,15 @@ export function migrateServerState(
   // The fold runs below 4 alone. Every version above it already writes
   // `servers`, and folding again would find the six fields gone and replace
   // the record with an empty one.
-  if (version < CURRENT_SERVER_ZUSTAND_VERSION) {
+  if (version < 4) {
     state = foldServersIntoOneRecord(state)
+  }
+
+  // v4→v5: each server's `byteSwap`. `repairServers` reads a server field by
+  // field, so without this a v4 server comes up with the `false` it means and
+  // a notice that its byte swap could not be read.
+  if (version < 5 && isRecord(state.servers)) {
+    for (const server of Object.values(state.servers)) addAbsentByteSwap(server)
   }
 
   //

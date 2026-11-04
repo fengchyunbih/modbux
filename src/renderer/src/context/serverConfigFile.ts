@@ -1,4 +1,5 @@
 import {
+  byteOrderOf,
   checkHasConfig,
   ConfigFileResult,
   parseServerConfig,
@@ -32,6 +33,7 @@ export const exportServerConfig = (): string | undefined => {
     modbuxVersion: useLayoutZustand.getState().version,
     name: server.name ?? '',
     littleEndian: server.littleEndian,
+    byteSwap: server.byteSwap,
     port: Number(server.port),
     registers: server.registers
   })
@@ -82,7 +84,9 @@ export const writeServerConfig = async (
 
     await serverZustand.resetServer(uuid)
     serverZustand.setName(config.name)
-    serverZustand.setLittleEndian(config.littleEndian)
+    serverZustand.setByteOrder(
+      byteOrderOf({ littleEndian: config.littleEndian, byteSwap: config.byteSwap ?? false })
+    )
 
     for (const unitId of UnitIdStringSchema.options) {
       const serverRegisters = config.serverRegistersPerUnit[unitId]

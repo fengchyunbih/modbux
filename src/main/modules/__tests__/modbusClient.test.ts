@@ -1393,6 +1393,29 @@ describe('ModbusClient', () => {
       expect(outcome.errors).toEqual([])
     })
 
+    it.each([
+      ['BADC', false, [0x3412, 0x7856]],
+      ['DCBA', true, [0x7856, 0x3412]]
+    ] as const)(
+      'decodes a 32 bit value in %s once the register config says so',
+      async (_order, littleEndian, registers) => {
+        await connectClient()
+        appState.updateRegisterConfig({
+          type: 'holding_registers',
+          address: 0,
+          length: 2,
+          littleEndian,
+          byteSwap: true
+        })
+        setupHoldingRegisterReadMock([...registers])
+
+        const outcome = await client.read()
+
+        if (!outcome.read) throw new Error(`the read was refused: ${outcome.reason}`)
+        expect(outcome.data[0]?.words?.uint32).toBe(0x12345678)
+      }
+    )
+
     it('answers not_connected and puts nothing on the wire while disconnected', async () => {
       expect(await client.read()).toEqual({ read: false, reason: 'not_connected' })
       expect(mockModbusRTU.readHoldingRegisters).not.toHaveBeenCalled()
@@ -2337,6 +2360,30 @@ describe('ModbusClient', () => {
           1,
           0,
           expect.any(Array),
+          expect.any(Function)
+        )
+      })
+
+      it('writes the registers in the byte order the register config holds', async () => {
+        await connectClient()
+        appState.updateRegisterConfig({ littleEndian: true, byteSwap: true })
+        mockModbusRTU.writeFC16.mockImplementation(
+          (_uid: number, _addr: number, _val: number[], cb: (err: null) => void) => cb(null)
+        )
+
+        await client.write({
+          address: 0,
+          type: 'holding_registers',
+          value: 0x12345678,
+          dataType: 'uint32',
+          single: false
+        })
+
+        // DCBA
+        expect(mockModbusRTU.writeFC16).toHaveBeenCalledWith(
+          1,
+          0,
+          [0x7856, 0x3412],
           expect.any(Function)
         )
       })

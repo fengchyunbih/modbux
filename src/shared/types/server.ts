@@ -3,7 +3,7 @@ import { BaseDataTypeSchema } from './datatype'
 import { BitMapConfigSchema } from './bitmap'
 import { PortSchema, RegisterAddressKeySchema, RegisterAddressSchema } from './ranges'
 import { SerialPortOptionsSchema } from './serial'
-import { ReservedByteSwapSchema } from './byteSwap'
+import { ConfigByteSwapSchema } from './byteOrder'
 import { UnitIdString, UnitIdStringSchema } from './unitid'
 import { getAddressFitError, getValueRangeError, MAX_UTF8_LENGTH } from '../encoding'
 import {
@@ -263,7 +263,7 @@ export const ServerConfigSchema = z.object({
   modbuxVersion: z.string(),
   name: z.string(),
   littleEndian: z.boolean(),
-  byteSwap: ReservedByteSwapSchema,
+  byteSwap: ConfigByteSwapSchema,
   port: PortSchema.optional(),
   serverRegistersPerUnit: ServerRegistersPerUnitSchema
 })
@@ -314,7 +314,8 @@ export type SyncRegisterValueParams = z.infer<typeof SyncRegisterValueParamsSche
  */
 export const ServerEndiannessSchema = z.object({
   uuid: ServerUuidSchema,
-  littleEndian: z.boolean()
+  littleEndian: z.boolean(),
+  byteSwap: z.boolean()
 })
 export type ServerEndianness = z.infer<typeof ServerEndiannessSchema>
 

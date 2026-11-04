@@ -1,4 +1,5 @@
 import {
+  ByteOrderFlags,
   checkHasConfig,
   DEFAULT_MODBUS_PORT,
   defaultSerialPortOptions,
@@ -9,6 +10,7 @@ import {
   MAIN_SERVER_UUID,
   PortSchema,
   RegisterParams,
+  reorderBytes,
   repairPersisted,
   registerWidth,
   SerialPortOptions,
@@ -124,6 +126,7 @@ export const getDefaultServer = (): PersistedServer => ({
   unitId: '0',
   name: undefined,
   littleEndian: false,
+  byteSwap: false,
   registers: {},
   usedAddresses: {}
 })
@@ -215,7 +218,8 @@ export const syncUuidToBackend = async (
 
   await window.api.setServerEndianness({
     uuid: syncUuid,
-    littleEndian: server.littleEndian
+    littleEndian: server.littleEndian,
+    byteSwap: server.byteSwap
   })
 
   for (const unitId of extractUnitIdsWithData(server.registers)) {
@@ -376,13 +380,13 @@ export class ServerDelayedSetter<T, P> {
 export const foldWordIntoComposite = ({
   currentValue,
   dataType,
-  littleEndian,
+  order,
   offsetRegisters,
   word
 }: {
   currentValue: ServerRegisterValue | bigint
   dataType: EncodableDataType
-  littleEndian: boolean
+  order: ByteOrderFlags
   offsetRegisters: number
   word: number
 }): { composite: number | bigint; value: ServerRegisterValue } | undefined => {
@@ -403,21 +407,21 @@ export const foldWordIntoComposite = ({
   // adding `probe14` to `BaseDataTypeSchema` answered TS2454 three times.
   switch (dataType) {
     case 'int16':
-      view.setInt16(0, Number(currentValue) || 0, littleEndian)
+      view.setInt16(0, Number(currentValue) || 0)
       break
     case 'uint16':
     case 'bitmap':
-      view.setUint16(0, Number(currentValue) || 0, littleEndian)
+      view.setUint16(0, Number(currentValue) || 0)
       break
     case 'int32':
-      view.setInt32(0, Number(currentValue) || 0, littleEndian)
+      view.setInt32(0, Number(currentValue) || 0)
       break
     case 'uint32':
     case 'unix':
-      view.setUint32(0, Number(currentValue) || 0, littleEndian)
+      view.setUint32(0, Number(currentValue) || 0)
       break
     case 'float':
-      view.setFloat32(0, Number(currentValue) || 0, littleEndian)
+      view.setFloat32(0, Number(currentValue) || 0)
       break
     // `undefined` is a stored value no composite can be read out of, which a
     // hand-edited config reaches because `ServerRegisterEntrySchema` takes a
@@ -425,52 +429,55 @@ export const foldWordIntoComposite = ({
     case 'int64': {
       const composite = toExact64Bits(currentValue)
       if (composite === undefined) return undefined
-      view.setBigInt64(0, composite, littleEndian)
+      view.setBigInt64(0, composite)
       break
     }
     case 'uint64':
     case 'datetime': {
       const composite = toExact64Bits(currentValue)
       if (composite === undefined) return undefined
-      view.setBigUint64(0, composite, littleEndian)
+      view.setBigUint64(0, composite)
       break
     }
     case 'double':
-      view.setFloat64(0, Number(currentValue) || 0, littleEndian)
+      view.setFloat64(0, Number(currentValue) || 0)
       break
   }
 
-  // Overwrite just the one 16-bit register that the client wrote
-  view.setUint16(offsetRegisters * 2, word, littleEndian)
+  // Overwrite just the one 16-bit register that the client wrote, in the
+  // order the registers hold the value, then read it back in ABCD
+  const registers = reorderBytes(new Uint8Array(view.buffer), order)
+  new DataView(registers.buffer).setUint16(offsetRegisters * 2, word)
+  new Uint8Array(view.buffer).set(reorderBytes(registers, order))
 
   let newComposite: number | bigint
   switch (dataType) {
     case 'int16':
-      newComposite = view.getInt16(0, littleEndian)
+      newComposite = view.getInt16(0)
       break
     case 'uint16':
     case 'bitmap':
-      newComposite = view.getUint16(0, littleEndian)
+      newComposite = view.getUint16(0)
       break
     case 'int32':
-      newComposite = view.getInt32(0, littleEndian)
+      newComposite = view.getInt32(0)
       break
     case 'uint32':
     case 'unix':
-      newComposite = view.getUint32(0, littleEndian)
+      newComposite = view.getUint32(0)
       break
     case 'float':
-      newComposite = view.getFloat32(0, littleEndian)
+      newComposite = view.getFloat32(0)
       break
     case 'int64':
-      newComposite = view.getBigInt64(0, littleEndian)
+      newComposite = view.getBigInt64(0)
       break
     case 'uint64':
     case 'datetime':
-      newComposite = view.getBigUint64(0, littleEndian)
+      newComposite = view.getBigUint64(0)
       break
     case 'double':
-      newComposite = view.getFloat64(0, littleEndian)
+      newComposite = view.getFloat64(0)
       break
   }
 

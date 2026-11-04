@@ -50,6 +50,7 @@ const firstServer = (): ServerConfigSource => ({
   modbuxVersion: '9.9.9',
   name: 'first',
   littleEndian: false,
+  byteSwap: false,
   port: 1502,
   registers: { 0: unit(7) }
 })
@@ -58,6 +59,7 @@ const secondServer = (): ServerConfigSource => ({
   modbuxVersion: '9.9.9',
   name: 'second',
   littleEndian: true,
+  byteSwap: true,
   port: 1503,
   registers: { 3: unit(9) }
 })
@@ -68,7 +70,7 @@ const source = (): ProjectSource => ({
     modbuxVersion: '9.9.9',
     name: 'boiler',
     connectionConfig: { ...defaultConnectionConfig, unitId: 17 },
-    registerConfig: { ...defaultRegisterConfig, littleEndian: true },
+    registerConfig: { ...defaultRegisterConfig, littleEndian: true, byteSwap: true },
     registerMapping: {
       ...emptyRegisterMapping(),
       holding_registers: { 0: { dataType: 'int16', comment: 'setpoint' } }
@@ -100,12 +102,18 @@ describe('a project file', () => {
     expect(config.client.version).toBe(CURRENT_CLIENT_CONFIG_VERSION)
     expect(config.client.connectionConfig?.unitId).toBe(17)
     expect(config.client.littleEndian).toBe(true)
-    expect(config.servers.map((server) => [server.name, server.port, server.littleEndian])).toEqual(
-      [
-        ['first', 1502, false],
-        ['second', 1503, true]
-      ]
-    )
+    expect(config.client.byteSwap).toBe(true)
+    expect(
+      config.servers.map((server) => [
+        server.name,
+        server.port,
+        server.littleEndian,
+        server.byteSwap
+      ])
+    ).toEqual([
+      ['first', 1502, false, false],
+      ['second', 1503, true, true]
+    ])
     expect(config.servers.every((s) => s.version === CURRENT_SERVER_CONFIG_VERSION)).toBe(true)
     expect(config.servers[1]?.serverRegistersPerUnit['3']?.holding_registers['5']?.value).toBe(9)
     expect(config.selectedServer).toBe(1)
@@ -170,13 +178,23 @@ describe('a project file', () => {
     })
   })
 
-  it('refuses a part that asks for a byte swap', () => {
+  it('round-trips a part with a byte swap', () => {
     const written = JSON.parse(serializeProject(source()))
     written.servers[0].byteSwap = true
 
+    const parsed = parseProject(JSON.stringify(written))
+
+    if (!parsed.ok) throw new Error(parsed.error)
+    expect(parsed.config.servers[0]?.byteSwap).toBe(true)
+  })
+
+  it('refuses a part whose byte swap is not a boolean', () => {
+    const written = JSON.parse(serializeProject(source()))
+    written.servers[0].byteSwap = 'yes'
+
     expect(parseProject(JSON.stringify(written))).toEqual({
       ok: false,
-      error: expect.stringMatching(/Server 1 in project: .*byte swap/)
+      error: expect.stringMatching(/Server 1 in project: .*byteSwap/)
     })
   })
 

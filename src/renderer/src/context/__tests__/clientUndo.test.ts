@@ -243,18 +243,36 @@ describe('a mapping entry', () => {
   })
 })
 
+describe('the byte order', () => {
+  it('is one step for an order that changes both flags, and undo puts both back', async () => {
+    const { client, undo, clientUndo } = await load()
+    await client().setType('holding_registers')
+    const steps = undo().client.past.length
+
+    await client().setByteOrder('DCBA')
+    expect(undo().client.past).toHaveLength(steps + 1)
+    expect(client().registerConfig).toMatchObject({ littleEndian: true, byteSwap: true })
+
+    expect(await clientUndo.undoClient()).toBe('done')
+    expect(client().registerConfig).toMatchObject({ littleEndian: false, byteSwap: false })
+
+    expect(await clientUndo.redoClient()).toBe('done')
+    expect(client().registerConfig).toMatchObject({ littleEndian: true, byteSwap: true })
+  })
+})
+
 describe('Load and Clear Config', () => {
   it('are one step that puts the name, the byte order and the mapping back', async () => {
     const { client, undo, clientUndo } = await load()
     await client().setType('holding_registers')
     client().setName('boiler')
     client().setRegisterMapping(3, 'comment', 'pump')
-    await client().setLittleEndian(true)
+    await client().setByteOrder('CDAB')
     const steps = undo().client.past.length
 
     await clientUndo.asOneClientStep(async () => {
       client().setName('')
-      await client().setLittleEndian(false)
+      await client().setByteOrder('ABCD')
       await client().clearRegisterMapping()
     })
     expect(undo().client.past).toHaveLength(steps + 1)
@@ -269,9 +287,9 @@ describe('Load and Clear Config', () => {
     const { client, clientUndo } = await load()
     await client().setType('holding_registers')
     client().setRegisterMapping(3, 'comment', 'pump')
-    await client().setLittleEndian(true)
+    await client().setByteOrder('CDAB')
     await clientUndo.asOneClientStep(async () => {
-      await client().setLittleEndian(false)
+      await client().setByteOrder('ABCD')
       await client().clearRegisterMapping()
     })
     refuse('setRegisterMapping')
@@ -285,9 +303,9 @@ describe('Load and Clear Config', () => {
     const { client, clientUndo } = await load()
     await client().setType('holding_registers')
     client().setRegisterMapping(3, 'comment', 'pump')
-    await client().setLittleEndian(true)
+    await client().setByteOrder('CDAB')
     await clientUndo.asOneClientStep(async () => {
-      await client().setLittleEndian(false)
+      await client().setByteOrder('ABCD')
       await client().clearRegisterMapping()
     })
     refuse('updateRegisterConfig')

@@ -1,4 +1,5 @@
 import {
+  ByteOrder,
   Protocol,
   RegisterType,
   ModbusBaudRate,
@@ -76,7 +77,7 @@ export type ClientZustand = {
   setStopBits: (stopBits: StopBits) => Promise<boolean>
   setPollRate: (pollRate: number) => Promise<boolean>
   setTimeout: (timeout: number) => Promise<boolean>
-  setLittleEndian: (littleEndian: boolean) => Promise<boolean>
+  setByteOrder: (byteOrder: ByteOrder) => Promise<boolean>
 
   // Layout configuration settings (i want them to be persistent)
   setAddressBase: (addressBase: '0' | '1') => Promise<boolean>

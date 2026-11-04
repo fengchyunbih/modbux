@@ -2,7 +2,7 @@
 //
 // Main keeps the byte order per server now, so a write says which registers to
 // encode rather than how. That only holds if main is told before it encodes
-// anything, and the two places that encode are `init` and `setLittleEndian`.
+// anything, and the two places that encode are `init` and `setByteOrder`.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CURRENT_SERVER_ZUSTAND_VERSION,
@@ -38,6 +38,7 @@ const persisted = {
         port: '502',
         unitId: '0',
         littleEndian: false,
+        byteSwap: false,
         registers: {
           '0': {
             coils: {},
@@ -87,20 +88,57 @@ describe('who tells main the byte order', () => {
     )
     expect(calls.find((call) => call.method === 'setServerEndianness')?.payload).toEqual({
       uuid: MAIN_SERVER_UUID,
-      littleEndian: false
+      littleEndian: false,
+      byteSwap: false
     })
   })
 
-  it('setLittleEndian says it before it sends the registers', async () => {
+  it('init hands main the byte swap the store kept', async () => {
+    const swapped = JSON.stringify(persisted).replace('"byteSwap":false', '"byteSwap":true')
+    expect(swapped).toContain('"byteSwap":true')
+    localStorage.setItem(SERVER_ZUSTAND_STORAGE_KEY, swapped)
+    const { useServerZustand } = await import('../server.zustand')
+
+    await useServerZustand.getState().init()
+
+    expect(calls.find((call) => call.method === 'setServerEndianness')?.payload).toEqual({
+      uuid: MAIN_SERVER_UUID,
+      littleEndian: false,
+      byteSwap: true
+    })
+  })
+
+  it('setByteOrder says it before it sends the registers', async () => {
     const { useServerZustand } = await import('../server.zustand')
     await useServerZustand.getState().init()
     calls = []
 
-    await useServerZustand.getState().setLittleEndian(true)
+    await useServerZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['setServerEndianness', 'syncServerRegister'])
-    expect(calls[0]?.payload).toEqual({ uuid: MAIN_SERVER_UUID, littleEndian: true })
+    expect(calls[0]?.payload).toEqual({
+      uuid: MAIN_SERVER_UUID,
+      littleEndian: true,
+      byteSwap: false
+    })
     expect(useServerZustand.getState().servers[MAIN_SERVER_UUID]?.littleEndian).toBe(true)
+  })
+
+  it.each([
+    ['BADC', false, true],
+    ['DCBA', true, true]
+  ] as const)('setByteOrder hands main both flags of %s', async (order, littleEndian, byteSwap) => {
+    const { useServerZustand } = await import('../server.zustand')
+    await useServerZustand.getState().init()
+    calls = []
+
+    await useServerZustand.getState().setByteOrder(order)
+
+    expect(calls[0]?.payload).toEqual({ uuid: MAIN_SERVER_UUID, littleEndian, byteSwap })
+    expect(useServerZustand.getState().servers[MAIN_SERVER_UUID]).toMatchObject({
+      littleEndian,
+      byteSwap
+    })
   })
 
   it('sends the registers without saying how to encode them', async () => {
@@ -108,7 +146,7 @@ describe('who tells main the byte order', () => {
     await useServerZustand.getState().init()
     calls = []
 
-    await useServerZustand.getState().setLittleEndian(true)
+    await useServerZustand.getState().setByteOrder('CDAB')
 
     expect(calls.find((call) => call.method === 'syncServerRegister')?.payload).toEqual({
       uuid: MAIN_SERVER_UUID,

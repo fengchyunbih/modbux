@@ -1,4 +1,5 @@
 import {
+  ByteOrderFlags,
   createRegisters,
   createStringRegisters,
   DEFAULT_UTF8_LENGTH,
@@ -25,19 +26,19 @@ import { Windows } from '../../windows'
 export const encodeRegisters = ({
   dataType,
   value,
-  littleEndian,
+  order,
   stringValue,
   length
 }: {
   dataType: ValuedDataType
   value: number
-  littleEndian: boolean
+  order: ByteOrderFlags
   stringValue?: string
   length?: number
 }): number[] =>
   dataType === 'utf8'
     ? createStringRegisters(stringValue ?? '', length ?? DEFAULT_UTF8_LENGTH)
-    : createRegisters(dataType, value, littleEndian)
+    : createRegisters(dataType, value, order)
 
 /**
  * Writes `registers` from `address` on and tells the server view each word.

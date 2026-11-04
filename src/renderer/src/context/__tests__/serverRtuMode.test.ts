@@ -52,6 +52,7 @@ const persisted = (com: string): string =>
           port: '502',
           unitId: '0',
           littleEndian: true,
+          byteSwap: false,
           registers: {
             '0': {
               coils: {},
@@ -111,7 +112,8 @@ describe('init in RTU mode', () => {
     })
     expect(payloadOf('setServerEndianness')).toEqual({
       uuid: MAIN_SERVER_UUID,
-      littleEndian: true
+      littleEndian: true,
+      byteSwap: false
     })
   })
 

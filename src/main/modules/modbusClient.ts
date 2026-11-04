@@ -857,7 +857,7 @@ export class ModbusClient {
     convertRegisterData(
       result,
       address,
-      this._appState.registerConfig.littleEndian,
+      this._appState.registerConfig,
       this._clientState.scanningRegisters
     )
 
@@ -983,7 +983,7 @@ export class ModbusClient {
     dataType: BaseDataType,
     single: boolean
   ): Promise<WriteAttempt> => {
-    const { littleEndian } = this._appState.registerConfig
+    const { littleEndian, byteSwap } = this._appState.registerConfig
 
     if (single && !['int16', 'uint16'].includes(dataType)) {
       this._emitMessage({
@@ -1007,7 +1007,7 @@ export class ModbusClient {
     }
 
     const { unitId } = this._appState.connectionConfig
-    const registers = createRegisters(dataType, value, littleEndian)
+    const registers = createRegisters(dataType, value, { littleEndian, byteSwap })
     const transactionIdKey = this._transactionLog.nextTransactionIdKey()
 
     try {

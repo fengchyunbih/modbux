@@ -50,7 +50,7 @@ const clientFieldWriters: {
   type: (value) => useClientZustand.getState().setType(value),
   pollRate: (value) => useClientZustand.getState().setPollRate(value),
   timeout: (value) => useClientZustand.getState().setTimeout(value),
-  littleEndian: (value) => useClientZustand.getState().setLittleEndian(value),
+  byteOrder: (value) => useClientZustand.getState().setByteOrder(value),
   advancedMode: (value) => useClientZustand.getState().setAdvancedMode(value),
   show64BitValues: (value) => useClientZustand.getState().setShow64BitValues(value),
   addressBase: (value) => useClientZustand.getState().setAddressBase(value)
@@ -135,7 +135,7 @@ const CONFIGURATION_FIELDS: readonly Exclude<ClientField, 'name'>[] = [
   'advancedMode',
   'show64BitValues',
   'addressBase',
-  'littleEndian'
+  'byteOrder'
 ]
 
 /** Writes one field to what `source` holds, and answers whether the store holds it after. */

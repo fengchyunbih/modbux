@@ -4,7 +4,7 @@
  * A client file from v3 on holds the connection and read settings, and opening
  * it applies them; a v2 file holds neither, and opening it leaves the ones on
  * screen. A server file from v4 on holds the port. A file asking for a byte
- * swap is refused by name.
+ * swap opens in that byte order.
  */
 import { test, expect, resetApp } from '../../fixtures/electron-app'
 import type { ElectronApplication, Page } from '@playwright/test'
@@ -116,26 +116,19 @@ test.describe.serial('Client config file with connection and read settings', () 
     await expect(field(mainPage, 'reg-address-input')).toHaveValue('40')
   })
 
-  test('a file asking for a byte swap is refused and changes nothing', async ({ mainPage }) => {
+  test('a file asking for a byte swap opens in that byte order', async ({ mainPage }) => {
     const config = JSON.parse(await readFile(clientFile, 'utf-8'))
     await writeFile(
       clientByteSwapFile,
-      JSON.stringify({
-        ...config,
-        name: 'swapped',
-        byteSwap: true,
-        connectionConfig: { ...config.connectionConfig, unitId: 99 }
-      })
+      JSON.stringify({ ...config, name: 'swapped', littleEndian: false, byteSwap: true })
     )
 
     await mainPage.getByTestId('load-config-file-input').setInputFiles(clientByteSwapFile)
 
-    await expect(mainPage.locator('.notistack-SnackbarContainer')).toContainText(
-      'byte swap (BADC or DCBA) is not supported',
-      { timeout: 5000 }
-    )
-    await expect(field(mainPage, 'client-config-name-input')).toHaveValue('Test Client')
-    await expect(field(mainPage, 'client-unitid-input')).toHaveValue('17')
+    await expect(field(mainPage, 'client-config-name-input')).toHaveValue('swapped')
+    await expect(mainPage.getByTestId('endian-badc-btn')).toHaveClass(/Mui-selected/)
+    await mainPage.getByTestId('endian-be-btn').click()
+    await expect(mainPage.getByTestId('endian-be-btn')).toHaveClass(/Mui-selected/)
   })
 })
 
@@ -164,17 +157,17 @@ test.describe.serial('Server config file with a port', () => {
   test('a v2 file opens its registers and leaves the port', async ({ mainPage }) => {
     await typeServerPort(mainPage, '5023')
 
-  // `resetApp` clears the server it finds on 502, so the next spec starts on a
-  // server it cannot find while this one is left on 5023.
-  test('put the server back on 502', async ({ mainPage }) => {
-    await typeServerPort(mainPage, '502')
-    await expect(mainPage.getByTestId('select-server-502')).toBeVisible()
-  })
-
     await mainPage.getByTestId('server-open-file-input').setInputFiles(SERVER_V2)
 
     await expect(field(mainPage, 'server-name-input')).toHaveValue('Basic Server')
     await expect(mainPage.getByTestId('section-holding_registers')).toContainText('(2)')
     await expect(field(mainPage, 'server-port-input')).toHaveValue('5023')
+  })
+
+  // `resetApp` clears the server it finds on 502, so the next spec starts on a
+  // server it cannot find while this one is left on 5023.
+  test('put the server back on 502', async ({ mainPage }) => {
+    await typeServerPort(mainPage, '502')
+    await expect(mainPage.getByTestId('select-server-502')).toBeVisible()
   })
 })

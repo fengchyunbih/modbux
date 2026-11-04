@@ -1,10 +1,11 @@
-import { dropUnmappableRegisters, repairPersistedParity } from '../shared'
+import { addAbsentByteSwap, dropUnmappableRegisters, repairPersistedParity } from '../shared'
 
 /**
- * One number above what the last release wrote. 2.3.0 shipped 2, under the name
- * `CURRENT_ROOT_ZUSTAND_VERSION` and the key `root.zustand`.
+ * 2.3.0 shipped 2, under the name `CURRENT_ROOT_ZUSTAND_VERSION` and the key
+ * `root.zustand`. This fork's own builds have written 3 since, so `byteSwap`
+ * is a step from 3 rather than a change to the step from 2.
  */
-export const CURRENT_CLIENT_ZUSTAND_VERSION = 3
+export const CURRENT_CLIENT_ZUSTAND_VERSION = 4
 
 /** Where the client store keeps its state. */
 export const CLIENT_ZUSTAND_STORAGE_KEY = 'client.zustand'
@@ -40,6 +41,10 @@ export function migrateClientState(
     repairPersistedParity(state, 'connectionConfig', 'rtu', 'options')
     dropUnmappableRegisters(state)
   }
+
+  // v3→v4: `registerConfig.byteSwap`. `repairPersisted` reads `registerConfig`
+  // whole, so a v3 blob without it would reset every read setting.
+  if (version < 4) addAbsentByteSwap(state.registerConfig)
 
   return state
 }

@@ -470,3 +470,30 @@ describe('a move in the register dialog', () => {
     expect(Object.keys(registers ?? {})).toEqual(['10'])
   })
 })
+
+describe('the byte order', () => {
+  it('goes back to both flags it had, in the store and in main, as one step', async () => {
+    const { server, undo, serverUndo } = await load()
+
+    await server().setByteOrder('DCBA')
+    expect(undo().server.past).toHaveLength(1)
+
+    expect(await serverUndo.undoServer()).toBe('done')
+    expect(server().servers[MAIN_SERVER_UUID]).toMatchObject({
+      littleEndian: false,
+      byteSwap: false
+    })
+    expect(lastPayload('setServerEndianness')).toEqual({
+      uuid: MAIN_SERVER_UUID,
+      littleEndian: false,
+      byteSwap: false
+    })
+
+    expect(await serverUndo.redoServer()).toBe('done')
+    expect(lastPayload('setServerEndianness')).toEqual({
+      uuid: MAIN_SERVER_UUID,
+      littleEndian: true,
+      byteSwap: true
+    })
+  })
+})

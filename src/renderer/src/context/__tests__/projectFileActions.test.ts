@@ -74,12 +74,13 @@ const buildProject = async ({ client, server }: Modules): Promise<void> => {
   client().setRegisterMapping(3, 'comment', 'pump')
   await client().setUnitId('17')
   await client().setHost('10.0.0.5', true)
+  await client().setByteOrder('BADC')
 
   server().setName('first')
   server().addBool('coils', 3)
   await server().createServer({ uuid: SECOND, port: 1503 })
   server().setName('second')
-  await server().setLittleEndian(true)
+  await server().setByteOrder('DCBA')
   server().addBool('discrete_inputs', 8)
 }
 
@@ -88,6 +89,7 @@ const moveElsewhere = async ({ client, server }: Modules): Promise<void> => {
   client().setName('other')
   await client().clearRegisterMapping()
   await client().setUnitId('2')
+  await client().setByteOrder('ABCD')
   for (const uuid of Object.keys(server().servers)) {
     if (uuid !== MAIN_SERVER_UUID) await server().deleteServer(uuid)
   }
@@ -135,6 +137,7 @@ describe('importProject', () => {
     expect(client().connectionConfig.unitId).toBe(17)
     expect(client().connectionConfig.tcp.host).toBe('10.0.0.5')
     expect(client().registerMapping.holding_registers[3]).toEqual({ comment: 'pump' })
+    expect(client().registerConfig).toMatchObject({ littleEndian: false, byteSwap: true })
     const uuids = Object.keys(server().servers)
     expect(uuids).toHaveLength(2)
     expect(uuids[0]).toBe(MAIN_SERVER_UUID)
@@ -145,7 +148,8 @@ describe('importProject', () => {
     expect(server().servers[secondUuid]).toMatchObject({
       name: 'second',
       port: '1503',
-      littleEndian: true
+      littleEndian: true,
+      byteSwap: true
     })
     expect(server().servers[secondUuid]?.registers['0']?.discrete_inputs[8]).toEqual({
       value: false

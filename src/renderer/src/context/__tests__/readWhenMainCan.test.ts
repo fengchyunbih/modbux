@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// `setLittleEndian` leaves rows that were decoded in the other word order, and
+// `setByteOrder` leaves rows that were decoded in the other word order, and
 // puts that right by asking main to read. Main refuses a read while a poll,
 // either scan or a read already in flight owns the port, and again while
 // nothing is connected, and says so in a snackbar, so the setter may not ask in
@@ -83,7 +83,7 @@ describe('the byte order, which reads through the same rule', () => {
     useDataZustand.getState().setRegisterData([row])
     calls.length = 0
 
-    await useClientZustand.getState().setLittleEndian(true)
+    await useClientZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['updateRegisterConfig', 'read'])
   })
@@ -94,7 +94,7 @@ describe('the byte order, which reads through the same rule', () => {
     useDataZustand.getState().setRegisterData([])
     calls.length = 0
 
-    await useClientZustand.getState().setLittleEndian(true)
+    await useClientZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['updateRegisterConfig'])
   })
@@ -105,7 +105,7 @@ describe('the byte order, which reads through the same rule', () => {
     useDataZustand.getState().setRegisterData([row])
     calls.length = 0
 
-    await useClientZustand.getState().setLittleEndian(true)
+    await useClientZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['updateRegisterConfig'])
   })
@@ -116,7 +116,7 @@ describe('the byte order, which reads through the same rule', () => {
     useDataZustand.getState().setRegisterData([row])
     calls.length = 0
 
-    await useClientZustand.getState().setLittleEndian(true)
+    await useClientZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['updateRegisterConfig'])
   })
@@ -127,7 +127,7 @@ describe('the byte order, which reads through the same rule', () => {
     useDataZustand.getState().setRegisterData([row])
     calls.length = 0
 
-    await useClientZustand.getState().setLittleEndian(true)
+    await useClientZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['updateRegisterConfig'])
   })
@@ -138,7 +138,7 @@ describe('the byte order, which reads through the same rule', () => {
     useDataZustand.getState().setRegisterData([row])
     calls.length = 0
 
-    await useClientZustand.getState().setLittleEndian(true)
+    await useClientZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['updateRegisterConfig'])
   })
@@ -149,7 +149,7 @@ describe('the byte order, which reads through the same rule', () => {
     useDataZustand.getState().setRegisterData([row])
     calls.length = 0
 
-    await useClientZustand.getState().setLittleEndian(true)
+    await useClientZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['updateRegisterConfig'])
   })
@@ -160,7 +160,7 @@ describe('the byte order, which reads through the same rule', () => {
     useDataZustand.getState().setRegisterData([row])
     calls.length = 0
 
-    await useClientZustand.getState().setLittleEndian(true)
+    await useClientZustand.getState().setByteOrder('CDAB')
 
     expect(methods()).toEqual(['updateRegisterConfig'])
   })

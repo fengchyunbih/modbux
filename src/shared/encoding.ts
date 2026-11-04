@@ -6,6 +6,7 @@
 // nothing else.
 import { DataTypeSchema, type DataType, type EncodableDataType } from './types/datatype'
 import type { RegisterParams } from './types/server'
+import type { ByteOrderFlags } from './types/byteOrder'
 
 /**
  * Whether bit `bit` of `word` is set.
@@ -79,43 +80,42 @@ export const MAX_NUMBER_REGISTER_WIDTH = Math.max(
     .map((dataType) => registerWidth(dataType))
 )
 
-// Regular most significant word first (big endian)
-export const bigEndian32 = (buffer: Buffer, offset: number): Buffer => {
-  return buffer.subarray(offset, offset + 4)
-}
-
 /**
- * Uncommon least significant word first (little endian).
+ * A value's bytes in the order its registers hold them, from the big endian
+ * ABCD it is written in, or back again.
  *
- * `littleBigEndian.md`, beside this file, puts 0x12345678 through both orders
- * and gives the SCL that writes either one from a Siemens PLC.
+ * `littleEndian` reverses the words and `byteSwap` swaps the two bytes inside
+ * each word. Each undoes itself, and the two commute because one moves only
+ * the word a byte sits in and the other only its half, so the one permutation
+ * goes both ways: `createRegisters` calls it to lay a value out,
+ * `convertRegisterData` to read one back, and `foldWordIntoComposite` for
+ * both. `littleBigEndian.md`, beside this file, puts 0x12345678 through all
+ * four orders.
+ *
+ * A value one register wide comes back as it went in, so `int16`, `uint16` and
+ * `bitmap` read the same in every order.
  */
-export const littleEndian32 = (buffer: Buffer, offset: number): Buffer<ArrayBuffer> => {
-  return Buffer.concat([
-    buffer.subarray(offset + 2, offset + 4) as Uint8Array,
-    buffer.subarray(offset, offset + 2) as Uint8Array
-  ])
-}
-
-// Regular most significant word first (big endian)
-export const bigEndian64 = (buffer: Buffer, offset: number): Buffer => {
-  return buffer.subarray(offset, offset + 8)
-}
-
-// Uncommon least significant word first (little endian)
-export const littleEndian64 = (buffer: Buffer, offset: number): Buffer<ArrayBuffer> => {
-  return Buffer.concat([
-    buffer.subarray(offset + 6, offset + 8) as Uint8Array,
-    buffer.subarray(offset + 4, offset + 6) as Uint8Array,
-    buffer.subarray(offset + 2, offset + 4) as Uint8Array,
-    buffer.subarray(offset, offset + 2) as Uint8Array
-  ])
+export const reorderBytes = (
+  bytes: Uint8Array,
+  { littleEndian, byteSwap }: ByteOrderFlags
+): Uint8Array<ArrayBuffer> => {
+  const reordered = new Uint8Array(bytes.length)
+  const words = bytes.length / 2
+  const swapsBytes = byteSwap && words > 1
+  for (const [index, byte] of bytes.entries()) {
+    const word = Math.floor(index / 2)
+    const half = index % 2
+    const targetWord = littleEndian ? words - 1 - word : word
+    const targetHalf = swapsBytes ? 1 - half : half
+    reordered[targetWord * 2 + targetHalf] = byte
+  }
+  return reordered
 }
 
 export const createRegisters = (
   dataType: EncodableDataType,
   value: number,
-  littleEndian: boolean
+  order: ByteOrderFlags
 ): [number, ...number[]] => {
   let buffer = Buffer.alloc(registerWidth(dataType) * 2)
 
@@ -129,44 +129,37 @@ export const createRegisters = (
       break
     case 'int32':
       buffer.writeInt32BE(value, 0)
-      if (littleEndian) buffer = littleEndian32(buffer, 0)
       break
     case 'uint32':
       buffer.writeUInt32BE(value, 0)
-      if (littleEndian) buffer = littleEndian32(buffer, 0)
       break
     case 'float':
       buffer.writeFloatBE(value, 0)
-      if (littleEndian) buffer = littleEndian32(buffer, 0)
       break
     case 'int64':
       buffer.writeBigInt64BE(BigInt(value), 0)
-      if (littleEndian) buffer = littleEndian64(buffer, 0)
       break
     case 'uint64':
       buffer.writeBigUInt64BE(BigInt(value), 0)
-      if (littleEndian) buffer = littleEndian64(buffer, 0)
       break
     case 'double':
       buffer.writeDoubleBE(value, 0)
-      if (littleEndian) buffer = littleEndian64(buffer, 0)
       break
     case 'unix':
       buffer.writeUInt32BE(value >>> 0, 0)
-      if (littleEndian) buffer = littleEndian32(buffer, 0)
       break
     case 'datetime':
       buffer = encodeIEC870DateTime(value)
-      if (littleEndian) buffer = littleEndian64(buffer, 0)
       break
   }
 
   // Convert bytes to array of 16-bit words. `registerWidth` is one at its
   // smallest over this type, so the first word is always there and the return
   // type says so: `_writeRegister` sends registers[0] to FC6.
-  const registers: [number, ...number[]] = [buffer.readUInt16BE(0)]
-  for (let i = 2; i < buffer.length; i += 2) {
-    registers.push(buffer.readUInt16BE(i))
+  const ordered = Buffer.from(reorderBytes(buffer, order).buffer)
+  const registers: [number, ...number[]] = [ordered.readUInt16BE(0)]
+  for (let i = 2; i < ordered.length; i += 2) {
+    registers.push(ordered.readUInt16BE(i))
   }
 
   return registers

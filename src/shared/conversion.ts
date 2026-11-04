@@ -1,5 +1,5 @@
-import { bigEndian32, bigEndian64, littleEndian32, littleEndian64 } from './encoding'
-import type { RegisterData } from './types'
+import { reorderBytes } from './encoding'
+import type { ByteOrderFlags, RegisterData } from './types'
 import round from 'lodash/round'
 import { DateTime } from 'luxon'
 
@@ -94,10 +94,13 @@ export const formatUnixSeconds = (seconds: number): string =>
     .toUTC()
     .toFormat('yyyy/MM/dd HH:mm:ss')
 
+const inBigEndian = (registerBytes: Uint8Array, order: ByteOrderFlags): Buffer =>
+  Buffer.from(reorderBytes(registerBytes, order).buffer)
+
 export const convertRegisterData = (
   result: ReadRegisterResultLike,
   address: number,
-  littleEndian: boolean,
+  order: ByteOrderFlags,
   isScanning: boolean
 ): RegisterData[] => {
   if (!result) return []
@@ -121,19 +124,9 @@ export const convertRegisterData = (
     // Only read BigInt64 and Double if we have 4 or more registers left
     const inRange64 = i < registers - 3
 
-    // Apply 32 bit endianness
-    const buf32 = inRange32
-      ? littleEndian
-        ? littleEndian32(buffer, offset)
-        : bigEndian32(buffer, offset)
-      : undefined
-
-    // Apply 64 bit endianness
-    const buf64 = inRange64
-      ? littleEndian
-        ? littleEndian64(buffer, offset)
-        : bigEndian64(buffer, offset)
-      : undefined
+    // The value starting at this register, put back into ABCD order
+    const buf32 = inRange32 ? inBigEndian(buffer.subarray(offset, offset + 4), order) : undefined
+    const buf64 = inRange64 ? inBigEndian(buffer.subarray(offset, offset + 8), order) : undefined
 
     // Define row data, read big endian data
     const rowData: RegisterData = {

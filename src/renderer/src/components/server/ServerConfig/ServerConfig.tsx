@@ -5,11 +5,12 @@ import TextField from '@mui/material/TextField'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import InputLabel from '@mui/material/InputLabel'
+import { BYTE_ORDER_OPTIONS } from '@renderer/components/shared/inputs/byteOrderOptions'
 import { integerMask } from '@renderer/components/shared/inputs/integerMask'
 import { meme } from '@renderer/components/shared/inputs/meme'
 import { MaskInputProps, maskInputProps } from '@renderer/components/shared/inputs/types'
 import { useServerZustand } from '@renderer/context/server.zustand'
-import { checkHasConfig, ServerMode } from '@shared'
+import { ByteOrder, byteOrderOf, checkHasConfig, ServerMode } from '@shared'
 import { ElementType, forwardRef } from 'react'
 import { IMaskInput } from 'react-imask'
 import Select, { SelectChangeEvent } from '@mui/material/Select'
@@ -52,12 +53,13 @@ const ModeToggle = meme(() => {
 const EndianToggle = meme(() => {
   const selectedUuid = useServerZustand((z) => z.selectedUuid)
   const littleEndian = useServerZustand((z) => z.servers[selectedUuid]?.littleEndian ?? false)
+  const byteSwap = useServerZustand((z) => z.servers[selectedUuid]?.byteSwap ?? false)
   const ready = useServerZustand((z) => z.ready[selectedUuid])
 
-  const handleChange = useCallback((_event: unknown, value: boolean | null): void => {
+  const handleChange = useCallback((_event: unknown, value: ByteOrder | null): void => {
     if (value === null) return
     const serverZustand = useServerZustand.getState()
-    serverZustand.setLittleEndian(value)
+    serverZustand.setByteOrder(value)
   }, [])
 
   return (
@@ -65,28 +67,22 @@ const EndianToggle = meme(() => {
       size="small"
       exclusive
       color="primary"
-      value={littleEndian}
+      value={byteOrderOf({ littleEndian, byteSwap })}
       disabled={!ready}
       onChange={handleChange}
     >
-      <ToggleButton
-        data-testid="server-endian-be-btn"
-        aria-label="Big Endian"
-        value={false}
-        sx={{ whiteSpace: 'nowrap', px: 1.5 }}
-        title="Big-Endian (Modbus standard)"
-      >
-        BE
-      </ToggleButton>
-      <ToggleButton
-        data-testid="server-endian-le-btn"
-        aria-label="Little Endian"
-        value={true}
-        sx={{ px: 1.5 }}
-        title="Little-Endian (rare, check device docs)"
-      >
-        LE
-      </ToggleButton>
+      {BYTE_ORDER_OPTIONS.map(({ order, testId, title }) => (
+        <ToggleButton
+          key={order}
+          data-testid={`server-endian-${testId}-btn`}
+          aria-label={order}
+          value={order}
+          sx={{ fontFamily: 'monospace', px: 1 }}
+          title={title}
+        >
+          {order}
+        </ToggleButton>
+      ))}
     </ToggleButtonGroup>
   )
 })
