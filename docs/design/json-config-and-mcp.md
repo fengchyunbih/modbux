@@ -13,6 +13,13 @@
 
 MCP 以本機 Local 方式運作。
 
+## 用語
+
+- **main**：Electron 的主程序，程式碼在 `src/main`。負責 Modbus 連線、Server、IPC。不是 git 分支。
+- **renderer**：Electron 的畫面程序，程式碼在 `src/renderer`。React UI 與 zustand store 在這裡。
+- **main window**：主視窗。另一個視窗是 split view 拆出來的 server window。
+- **git 分支**：本文件提到分支時一律寫全名，例如 `main` 分支、`feature/json-config-and-mcp` 分支。
+
 ## 現況
 
 - 兩邊都已有 JSON 匯出／匯入，但只能在 renderer 裡用：Client 在 `RegisterGridToolbar/SaveButton.tsx` 與 `LoadButton.tsx`，Server 在 `server/OpenSaveClear.tsx`。寫檔走 `downloadJson`，讀檔走 `<input type=file>`。版本遷移在 `@shared` 的 `migrateClientConfig` 與 `migrateServerConfig`。
