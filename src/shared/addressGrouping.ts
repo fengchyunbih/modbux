@@ -15,22 +15,25 @@ const MAX_UTF8_READ_REGISTERS = 24
 /**
  * How many registers to read for a mapped address.
  *
- * This is not `registerWidth`. A client's register mapping carries no length,
- * so the only thing saying where a string ends is the next mapped address.
- * `none` is an address with no data type, which is nothing to read at all.
+ * This is not `registerWidth`. A string the grid maps carries no length, so
+ * the next mapped address is where it ends. A point table names the length,
+ * and the next point can sit past it. `none` is an address with no data type,
+ * which is nothing to read at all.
  */
 export const getReadSpan = (
   dataType: DataType,
   currentAddress: number,
-  nextAddress?: number
+  nextAddress?: number,
+  length?: number
 ): number => {
   if (dataType === 'none') return 0
   if (dataType !== 'utf8') return registerWidth(dataType)
 
+  const ceiling = length ?? MAX_UTF8_READ_REGISTERS
   if (typeof nextAddress === 'number' && nextAddress > currentAddress) {
-    return Math.min(nextAddress - currentAddress, MAX_UTF8_READ_REGISTERS)
+    return Math.min(nextAddress - currentAddress, ceiling)
   }
-  return MAX_UTF8_READ_REGISTERS
+  return ceiling
 }
 
 /**
@@ -48,7 +51,7 @@ export const buildAddrInfos = (
 
       const next = arr[index + 1]
       const nextAddress = next?.[0] ? Number(next[0]) : undefined
-      const registerCount = getReadSpan(dataType, address, nextAddress)
+      const registerCount = getReadSpan(dataType, address, nextAddress, item[1].length)
 
       return {
         address,

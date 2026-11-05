@@ -43,6 +43,19 @@ describe('getReadSpan', () => {
       expect(getReadSpan('utf8', 10, 10)).toBe(24)
       expect(getReadSpan('utf8', 10, 5)).toBe(24)
     })
+
+    // A point table names a string's width, and the next point can sit past it.
+    it('reads the length the mapping names, not the gap to the next address', () => {
+      expect(getReadSpan('utf8', 0, 10, 2)).toBe(2)
+    })
+
+    it('reads a named length past the 24 a string without one is held to', () => {
+      expect(getReadSpan('utf8', 0, undefined, 124)).toBe(124)
+    })
+
+    it('stops a named length at the next mapped address it would run into', () => {
+      expect(getReadSpan('utf8', 0, 3, 10)).toBe(3)
+    })
   })
 })
 
@@ -108,6 +121,14 @@ describe('buildAddrInfos', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const infos = buildAddrInfos(items as any)
     expect(infos[0]?.registerCount).toBe(10) // gap = 10 - 0
+  })
+
+  it('reads the length a utf8 entry names', () => {
+    const infos = buildAddrInfos([
+      ['0', { dataType: 'utf8', length: 2 }],
+      ['10', { dataType: 'uint16' }]
+    ])
+    expect(infos[0]?.registerCount).toBe(2)
   })
 })
 

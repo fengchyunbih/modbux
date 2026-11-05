@@ -698,6 +698,7 @@ export const clientMappingOf = (points: readonly ResolvedPoint[]): RegisterMappi
   for (const point of points) {
     const entry: RegisterMapValue = { comment: point.comment }
     if (point.dataType) entry.dataType = point.dataType
+    if (point.dataType === 'utf8') entry.length = point.width
     if (point.scalingFactor !== undefined) entry.scalingFactor = point.scalingFactor
     if (point.interpolate) {
       const { x1, x2, y1, y2 } = point.interpolate

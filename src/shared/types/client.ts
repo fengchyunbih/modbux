@@ -1,7 +1,7 @@
 import z from 'zod'
 import { BaseDataTypeSchema, DataTypeSchema } from './datatype'
 import { BitMapConfigSchema } from './bitmap'
-import { registerWidth } from '../encoding'
+import { MAX_UTF8_LENGTH, registerWidth } from '../encoding'
 import {
   MAX_WRITE_BITS,
   PortSchema,
@@ -31,7 +31,12 @@ export const RegisterMapValueSchema = z.object({
   comment: z.string().optional(),
   interpolate: RegisterLinearInterpolationSchema.optional(),
   groupEnd: z.boolean().optional(),
-  bitMap: BitMapConfigSchema.optional()
+  bitMap: BitMapConfigSchema.optional(),
+  /**
+   * A utf8 string's width in registers. A point table sets it; without it a
+   * string runs to the next mapped address, at most 24 registers.
+   */
+  length: z.number().int().min(1).max(MAX_UTF8_LENGTH).optional()
 })
 export type RegisterMapValue = z.infer<typeof RegisterMapValueSchema>
 

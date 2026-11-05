@@ -90,6 +90,16 @@ describe('how much of a string engineeringValue answers', () => {
     ).toBe('ABCD')
   })
 
+  it('stops at the length the mapping names, before the next typed register', () => {
+    expect(
+      shown(
+        { 0: { dataType: 'utf8', length: 2 }, 10: { dataType: 'uint16' } },
+        rowAt(0, 'ABCDxxxxxxxxxxxxxxxx'),
+        [[0, 11]]
+      )
+    ).toBe('ABCD')
+  })
+
   it('answers nothing for an address outside every group', () => {
     expect(shown({ 9: { dataType: 'utf8' } }, rowAt(9, 'ABCD'), [[0, 4]])).toBe(undefined)
   })

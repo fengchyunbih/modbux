@@ -747,7 +747,9 @@ describe('what an accepted table becomes', () => {
         interpolate: { x1: '4', x2: '20', y1: '0', y2: '100' }
       }
     })
-    expect(mapping.input_registers).toEqual({ 0: { comment: 'Serial', dataType: 'utf8' } })
+    expect(mapping.input_registers).toEqual({
+      0: { comment: 'Serial', dataType: 'utf8', length: 4 }
+    })
     expect(mapping.coils).toEqual({ 4: { comment: 'Run' } })
     expect(mapping.discrete_inputs).toEqual({})
   })

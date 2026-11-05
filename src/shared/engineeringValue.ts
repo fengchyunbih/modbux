@@ -107,8 +107,8 @@ export const engineeringValue = (
 
 /**
  * The part of a utf8 word that belongs to the register at `address`: two
- * characters per register, up to the next register the mapping gives a type or
- * the end of the group, whichever comes first.
+ * characters per register, up to the next register the mapping gives a type,
+ * the length the mapping names or the end of the group, whichever comes first.
  *
  * The group is [startAddress, + length), the same half-open range the `find`
  * reads it as, and `<=` took two characters out of whatever was read after it.
@@ -125,10 +125,12 @@ const utf8Value = (
   if (!currentGroup) return undefined
   const [startAddress, length] = currentGroup
 
+  const named = registerMap[address]?.length ?? Infinity
   let count = 1
   let register = registerMap[address + count]
   while (
     address + count < startAddress + length &&
+    count < named &&
     (!register || register.dataType === 'none' || !register.dataType)
   ) {
     count++
