@@ -222,11 +222,34 @@ const pointRow = (
   return point
 }
 
+/**
+ * The mapped addresses of `type` the read brought back no row for, ascending.
+ * A register address counts where its data type is one to read; a coil or a
+ * discrete input counts by being mapped, because a bit carries no data type.
+ */
+const unreadAddresses = (
+  context: McpToolContext,
+  type: RegisterType,
+  rows: readonly PointRow[]
+): number[] => {
+  const read = new Set(rows.map((row) => row.address))
+  const map = context.appState.registerMapping?.[type] ?? {}
+  return Object.entries(map)
+    .filter(([, entry]) =>
+      BIT_TYPES.includes(type)
+        ? entry !== undefined
+        : !!entry?.dataType && entry.dataType !== 'none'
+    )
+    .map(([address]) => Number(address))
+    .filter((address) => !read.has(address))
+    .sort((a, b) => a - b)
+}
+
 const clientReadPoints = defineTool({
   name: 'client_read_points',
   title: 'Read the client points',
   description:
-    'Read once from the connected device and answer every address read, with the raw 16-bit word (or the bit), and for each address the mapping gives a data type: its comment, scaling factor and the engineering value as the Modbux grid shows it. An unscaled int64 or uint64 value is a decimal string, so it keeps every digit. With read configuration on, the mapped addresses are read; otherwise the register type, address and length the client is set to. Compare the words with the expected value to check the byte order and scaling.',
+    'Read once from the connected device and answer every address read, with the raw 16-bit word (or the bit), and for each address the mapping gives a data type: its comment, scaling factor and the engineering value as the Modbux grid shows it. An unscaled int64 or uint64 value is a decimal string, so it keeps every digit. With read configuration on, the mapped addresses are read; otherwise the register type, address and length the client is set to, at most 125 registers or 2000 bits. `unread` names the mapped addresses of the register type that got no row. Compare the words with the expected value to check the byte order and scaling.',
   inputSchema: {},
   annotations: { readOnlyHint: true, openWorldHint: true },
   run: async (_input, context) => {
@@ -263,6 +286,7 @@ const clientReadPoints = defineTool({
       byteOrder,
       readConfiguration: context.appState.readConfiguration,
       rows,
+      unread: unreadAddresses(context, type, rows),
       errors
     }
     // Every group failed: nothing was read, and the result says why.
@@ -321,7 +345,7 @@ const clientApplyPointTable = defineTool({
   name: 'client_apply_point_table',
   title: 'Apply a point table to the client',
   description:
-    "Map a device's point table onto the client: each point's address (in pdu0, one_based or modicon notation) is converted to a PDU address and register type, and its data type, scaling factor, interpolation and name/unit/comment become the register mapping. On apply, the mapping is replaced, the read window (register type, address, length) is set to cover the points of the first point's register type, and the table's byte order and unit id are set, as one undo step. Every point is answered accepted or rejected with the reason; only accepted points are applied. Rejected: unknown data type, address out of range, overlapping points, a byte order that differs from the table's (one configuration has one byte order), a byte swap (BADC, DCBA) on a 16 bit type or utf8, a unit id other than the table's. dryRun answers the report and changes nothing.",
+    "Map a device's point table onto the client: each point's address (in pdu0, one_based or modicon notation) is converted to a PDU address and register type, and its data type, scaling factor, interpolation and name/unit/comment become the register mapping. On apply, the mapping is replaced, the read window (register type, address, length) is set to cover the points of the first point's register type, and the table's byte order and unit id are set, as one undo step. Read configuration is switched on for a register type, so client_read_points reads every mapped point of that type. Every point is answered accepted or rejected with the reason; only accepted points are applied. Rejected: unknown data type, address out of range, overlapping points, a byte order that differs from the table's (one configuration has one byte order), a byte swap (BADC, DCBA) on a 16 bit type or utf8, a unit id other than the table's. dryRun answers the report and changes nothing.",
   inputSchema: {
     points: z.array(PointSchema).min(1).max(10000),
     notation: AddressNotationSchema.default('pdu0').describe(

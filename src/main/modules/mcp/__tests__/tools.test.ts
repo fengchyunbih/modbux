@@ -356,6 +356,63 @@ describe('client_read_points', () => {
     expect((answer.rows as { value?: unknown }[])[0]?.value).toBe(23)
   })
 
+  // The toolbar's read stops at 125 registers, so a point at 200 gets no row.
+  it('names the mapped addresses the read brought back no row for', async () => {
+    const context = connected()
+    const mapping = emptyRegisterMapping()
+    mapping.holding_registers[0] = { dataType: 'uint16' }
+    mapping.holding_registers[200] = { dataType: 'uint16' }
+    mapping.holding_registers[300] = { comment: 'no data type, nothing to read' }
+    context.setMapping(mapping)
+    context.read.mockResolvedValue({
+      read: true,
+      data: holdingRows(0, new Array<number>(125).fill(0)),
+      groups: [[0, 125]],
+      errors: []
+    })
+    const client = await connectInMemory(context)
+
+    const answer = jsonOf(await client.callTool({ name: 'client_read_points', arguments: {} }))
+
+    expect(answer.unread).toEqual([200])
+  })
+
+  it('names no address unread when every mapped address has a row', async () => {
+    const context = connected()
+    const mapping = emptyRegisterMapping()
+    mapping.holding_registers[0] = { dataType: 'uint16' }
+    mapping.holding_registers[200] = { dataType: 'uint16' }
+    context.setMapping(mapping)
+    context.read.mockResolvedValue({
+      read: true,
+      data: [...holdingRows(0, [1]), ...holdingRows(200, [2])],
+      groups: [
+        [0, 1],
+        [200, 1]
+      ],
+      errors: []
+    })
+    const client = await connectInMemory(context)
+
+    const answer = jsonOf(await client.callTool({ name: 'client_read_points', arguments: {} }))
+
+    expect(answer.unread).toEqual([])
+  })
+
+  it('names a mapped coil outside the window unread', async () => {
+    const context = connected()
+    context.appState.registerConfig.type = 'coils'
+    const mapping = emptyRegisterMapping()
+    mapping.coils[3000] = { comment: 'Run' }
+    context.setMapping(mapping)
+    context.read.mockResolvedValue({ read: true, data: [], groups: [[0, 2000]], errors: [] })
+    const client = await connectInMemory(context)
+
+    const answer = jsonOf(await client.callTool({ name: 'client_read_points', arguments: {} }))
+
+    expect(answer.unread).toEqual([3000])
+  })
+
   it('answers a bit for coils', async () => {
     const context = connected()
     context.appState.registerConfig.type = 'coils'

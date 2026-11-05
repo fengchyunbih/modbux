@@ -6,6 +6,7 @@ import {
   ClientSetConnectionPayload,
   ClientSetConnectionResult,
   ClientWriteOutcome,
+  configuredReadGroups,
   ConnectionConfig,
   ServerApplyPointTablePayload,
   ServerSetValuesPayload,
@@ -77,6 +78,10 @@ const clientSetConnection = async (
 /**
  * Replaces the mapping, and sets the read window, the byte order and the unit
  * id the table names, as one step to undo. The name is kept.
+ *
+ * Read configuration is switched on where the window's type has a group to
+ * read, because the toolbar's read is one request of at most 125 registers.
+ * A bit type configures no group, and the toggle turns itself off there.
  */
 const clientApplyPointTable = async ({
   registerMapping,
@@ -98,6 +103,9 @@ const clientApplyPointTable = async ({
       registerMapping
     })
   })
+  if (outcome === 'done' && configuredReadGroups(true, window.type, registerMapping).length > 0) {
+    useClientZustand.getState().setReadConfiguration(true)
+  }
   const after = useClientZustand.getState()
   return {
     outcome,

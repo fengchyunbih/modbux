@@ -218,6 +218,80 @@ describe('client_apply_point_table', () => {
     expect(result.outcome).toBe('done')
     expect(client().connectionConfig.unitId).toBe(3)
   })
+
+  // The window spans 0 to 200, and the toolbar's read stops at 125 registers.
+  // Read configuration reads each mapped group, so 200 is read too.
+  it('switches read configuration on, so every register point is read', async () => {
+    const commands = await wireUp()
+    const { client } = await stores()
+    const wide = acceptedPoints(
+      validatePointTable(
+        [
+          { name: 'A', address: 0, registerType: 'holding_registers', dataType: 'uint16' },
+          { name: 'B', address: 200, registerType: 'holding_registers', dataType: 'uint16' }
+        ],
+        { target: 'client', notation: 'pdu0' }
+      )
+    )
+    const window = readWindowOf(wide)?.window
+    if (!window) throw new Error('the table covers nothing')
+    expect(client().readConfiguration).toBe(false)
+
+    await commands.send('client_apply_point_table', {
+      registerMapping: clientMappingOf(wide),
+      window
+    })
+
+    expect(client().readConfiguration).toBe(true)
+  })
+
+  it('leaves read configuration off when main refuses the mapping', async () => {
+    const commands = await wireUp()
+    const { client } = await stores()
+    const underneath = window.api as unknown as Record<string, unknown>
+    window.api = new Proxy(
+      {},
+      {
+        get: (_target, name: string): unknown =>
+          name === 'setRegisterMapping'
+            ? (): Promise<undefined> => Promise.resolve(undefined)
+            : underneath[name]
+      }
+    ) as never
+
+    const result = await commands.send('client_apply_point_table', {
+      registerMapping: clientMappingOf(points),
+      window: covered.window
+    })
+
+    expect(result.outcome).toBe('refused')
+    expect(client().readConfiguration).toBe(false)
+  })
+
+  // A bit type configures no group to read, and the toolbar's window is what
+  // reads it. Read configuration on there would read the same window and the
+  // toggle turns it back off.
+  it('leaves read configuration off for a table of coils', async () => {
+    const commands = await wireUp()
+    const { client } = await stores()
+    const coils = acceptedPoints(
+      validatePointTable([{ name: 'Run', address: 4, registerType: 'coils' }], {
+        target: 'client',
+        notation: 'pdu0'
+      })
+    )
+    const window = readWindowOf(coils)?.window
+    if (!window) throw new Error('the table covers nothing')
+
+    const result = await commands.send('client_apply_point_table', {
+      registerMapping: clientMappingOf(coils),
+      window
+    })
+
+    expect(result.outcome).toBe('done')
+    expect(client().registerConfig.type).toBe('coils')
+    expect(client().readConfiguration).toBe(false)
+  })
 })
 
 // Two commands sent at once each record their own step only when the second

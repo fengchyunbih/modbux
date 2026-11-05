@@ -157,12 +157,12 @@ test.describe.serial('MCP point table', () => {
       expect(await readValues()).toMatchObject({ 0: 230.5, 2: -123456 })
     }).toPass({ timeout: 10000 })
 
-    // -123456 is 0xFFFE1DC0, which CDAB lays out low word first. The grid
-    // draws what the read answers while the client view is open.
+    // -123456 is 0xFFFE1DC0, which CDAB lays out low word first. The apply
+    // switched read configuration on, so the grid draws one row per point.
     await navigateToClient(mainPage)
     await readValues()
     await expectCell(mainPage, 2, 'hex', '1DC0')
-    await expectCell(mainPage, 3, 'hex', 'FFFE')
+    await expectCell(mainPage, 2, 'value', '-123456')
   })
 
   test('client_write is refused while writes to devices are off', async () => {
