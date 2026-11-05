@@ -84,6 +84,14 @@ export const engineeringValue = (
 
   const dataType = registerMap[address]?.dataType
 
+  // A utf8 point is cut from bytes before anything decodes it, so it takes its
+  // own path ahead of the number conversions below.
+  if (dataType === 'utf8') {
+    const bytes = row.words?.utf8
+    if (!bytes || bytes.length === 0) return undefined
+    return utf8Value(bytes, address, registerMap, addressGroups)
+  }
+
   // The word is read before it is stringified, because `String(undefined)` is
   // the word "undefined", which is truthy, so a row carrying no words drew that
   // in the cell. `convertBitData` writes such a row for every coil and discrete
@@ -94,8 +102,6 @@ export const engineeringValue = (
   if (word === undefined || word === '') return undefined
   const value = String(word)
 
-  if (dataType === 'utf8') return utf8Value(value, address, registerMap, addressGroups)
-
   if (dataType === 'datetime' || dataType === 'unix') return value
 
   if (isNaN(Number(value))) return undefined
@@ -105,16 +111,24 @@ export const engineeringValue = (
   return scaleValue(value, dataType, registerMap[address])
 }
 
+// `TextDecoder` rather than `Buffer`: the renderer calls this, and it has no `Buffer`.
+const utf8Decoder = new TextDecoder('utf-8')
+
 /**
  * The part of a utf8 word that belongs to the register at `address`: two
- * characters per register, up to the next register the mapping gives a type,
- * the length the mapping names or the end of the group, whichever comes first.
+ * bytes per register, up to the next register the mapping gives a type, the
+ * length the mapping names or the end of the group, whichever comes first.
+ *
+ * `bytes` is the rest of the read, cut to the point's own bytes before it is
+ * decoded. Decoding the read first and counting characters gave a point
+ * holding `中文` three registers and the `ABCD` after it, and decoding it first
+ * and cutting bytes of the result lost the count at every invalid byte.
  *
  * The group is [startAddress, + length), the same half-open range the `find`
  * reads it as, and `<=` took two characters out of whatever was read after it.
  */
 const utf8Value = (
-  value: string,
+  bytes: Uint8Array,
   address: number,
   registerMap: RegisterMapObject,
   addressGroups: readonly AddressGroup[]
@@ -137,5 +151,5 @@ const utf8Value = (
     register = registerMap[address + count]
   }
 
-  return value.slice(0, count * 2)
+  return utf8Decoder.decode(bytes.subarray(0, count * 2))
 }

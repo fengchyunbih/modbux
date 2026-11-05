@@ -10,6 +10,9 @@ import {
 import { byteOrderFlags } from '../types/byteOrder'
 
 const ABCD = byteOrderFlags('ABCD')
+
+const utf8Of = (utf8: Uint8Array | undefined): string | undefined =>
+  utf8 && Buffer.from(utf8).toString('utf-8')
 const CDAB = byteOrderFlags('CDAB')
 
 describe('parseIEC870DateTime', () => {
@@ -339,8 +342,8 @@ describe('convertRegisterData', () => {
     const result = makeResult([0x4100]) // 'A' followed by null
     const data = convertRegisterData(result, 0, ABCD, false)
     // The null byte should become a space (0x20)
-    expect(data[0]?.words?.utf8).toContain('A')
-    expect(data[0]?.words?.utf8).not.toContain('\0')
+    expect(utf8Of(data[0]?.words?.utf8)).toContain('A')
+    expect(utf8Of(data[0]?.words?.utf8)).not.toContain('\0')
   })
 
   describe('utf8 per-row offset', () => {
@@ -350,11 +353,11 @@ describe('convertRegisterData', () => {
       const data = convertRegisterData(result, 0, ABCD, false)
 
       // Row 0 sees the full string from offset 0
-      expect(data[0]?.words?.utf8).toBe('Hello ')
+      expect(utf8Of(data[0]?.words?.utf8)).toBe('Hello ')
       // Row 1 starts at byte offset 2 → "llo " + trailing
-      expect(data[1]?.words?.utf8?.startsWith('llo')).toBe(true)
+      expect(utf8Of(data[1]?.words?.utf8)?.startsWith('llo')).toBe(true)
       // Row 2 starts at offset 4 → "o "
-      expect(data[2]?.words?.utf8).toBe('o ')
+      expect(utf8Of(data[2]?.words?.utf8)).toBe('o ')
     })
 
     it('utf8 is correct when preceded by non-ASCII data', () => {
@@ -367,7 +370,7 @@ describe('convertRegisterData', () => {
       const data = convertRegisterData(result, 0, ABCD, false)
 
       // Row 1 should start with "He", unaffected by non-ASCII at row 0
-      expect(data[1]?.words?.utf8?.startsWith('Hello')).toBe(true)
+      expect(utf8Of(data[1]?.words?.utf8)?.startsWith('Hello')).toBe(true)
     })
 
     it('utf8 handles multi-register string at higher address', () => {
@@ -378,21 +381,21 @@ describe('convertRegisterData', () => {
       const data = convertRegisterData(result, 0, ABCD, false)
 
       // Row at index 2 (address 2) should start with "Hello Worl"
-      expect(data[2]?.words?.utf8?.startsWith('Hello Worl')).toBe(true)
+      expect(utf8Of(data[2]?.words?.utf8)?.startsWith('Hello Worl')).toBe(true)
     })
 
     it('utf8 with single character register', () => {
       const result = makeResult([0x4100]) // "A\0" → "A "
       const data = convertRegisterData(result, 10, ABCD, false)
-      expect(data[0]?.words?.utf8).toBe('A ')
+      expect(utf8Of(data[0]?.words?.utf8)).toBe('A ')
     })
 
     it('utf8 with empty (all null) registers', () => {
       const result = makeResult([0x0000, 0x0000])
       const data = convertRegisterData(result, 0, ABCD, false)
       // Nulls become spaces
-      expect(data[0]?.words?.utf8).toBe('    ')
-      expect(data[1]?.words?.utf8).toBe('  ')
+      expect(utf8Of(data[0]?.words?.utf8)).toBe('    ')
+      expect(utf8Of(data[1]?.words?.utf8)).toBe('  ')
     })
   })
 })

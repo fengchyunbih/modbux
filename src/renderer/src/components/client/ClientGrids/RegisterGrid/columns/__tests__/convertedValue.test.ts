@@ -32,7 +32,7 @@ const rowAt = (address: number, utf8: string): RegisterData => ({
     uint64: BigInt(0),
     double: 0,
     datetime: '',
-    utf8
+    utf8: Buffer.from(utf8)
   },
   bit: false,
   isScanned: false
@@ -52,7 +52,7 @@ const numberRowAt = (address: number, value: number): RegisterData => ({
     uint64: BigInt(0),
     double: value,
     datetime: '',
-    utf8: ''
+    utf8: new Uint8Array()
   }
 })
 

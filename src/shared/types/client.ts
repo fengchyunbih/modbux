@@ -328,7 +328,13 @@ export interface RegisterDataWords {
   ['uint64']: bigint
   ['double']: number
   ['datetime']: string
-  ['utf8']: string
+  /**
+   * The raw bytes from this register to the end of the read, each null as a
+   * space. Bytes rather than a string, because decoding the whole read at once
+   * lets an invalid byte or a character split across two points change what
+   * its neighbours decode to.
+   */
+  ['utf8']: Uint8Array
 }
 
 export interface RawTransaction {

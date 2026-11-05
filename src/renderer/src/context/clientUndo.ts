@@ -108,8 +108,9 @@ const replayMapping = async (step: ClientMappingStep): Promise<ClientMappingStep
 }
 
 const currentConfiguration = (): ClientConfiguration => {
-  const { name, connectionConfig, registerConfig, registerMapping } = useClientZustand.getState()
-  return { name, connectionConfig, registerConfig, registerMapping }
+  const { name, connectionConfig, registerConfig, registerMapping, readConfiguration } =
+    useClientZustand.getState()
+  return { name, connectionConfig, registerConfig, registerMapping, readConfiguration }
 }
 
 /**
@@ -195,7 +196,8 @@ const writeClientFields = async (
  *
  * `writeClientFields` with the mapping as the last write. A refusal still
  * costs read configuration, which `replaceRegisterMapping` turns off before it
- * asks.
+ * asks. Once the mapping is in, read configuration is set to `target`'s, so an
+ * undo or a redo restores the reads the step changed along with the mapping.
  */
 export const writeClientConfiguration = async (
   target: ClientConfiguration
@@ -205,6 +207,7 @@ export const writeClientConfiguration = async (
   )
   if (outcome !== 'done') return outcome
   useClientZustand.getState().setName(target.name)
+  if (target.readConfiguration) useClientZustand.getState().setReadConfiguration(true)
   showMapping()
   return 'done'
 }

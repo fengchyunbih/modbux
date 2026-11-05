@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import type { AddressGroup, RegisterData, RegisterMapObject } from '../types'
+import { convertRegisterData } from '../conversion'
+import { byteOrderFlags } from '../types/byteOrder'
 import { engineeringValue, linearInterpolate, scaleValue } from '../engineeringValue'
 
 /** A row carrying the utf8 the read buffer holds from this address onward. */
-const rowAt = (address: number, utf8: string): RegisterData => ({
+const rowAt = (address: number, utf8: string | Uint8Array): RegisterData => ({
   id: address,
   buffer: Buffer.alloc(2),
   hex: '',
@@ -18,7 +20,7 @@ const rowAt = (address: number, utf8: string): RegisterData => ({
     uint64: BigInt(0),
     double: 0,
     datetime: '',
-    utf8
+    utf8: typeof utf8 === 'string' ? Buffer.from(utf8) : utf8
   },
   bit: false,
   isScanned: false
@@ -41,7 +43,7 @@ const numberRowAt = (address: number, value: number, time = ''): RegisterData =>
     uint64: BigInt(Number.isInteger(value) ? value : 0),
     double: value,
     datetime: time,
-    utf8: ''
+    utf8: new Uint8Array()
   }
 })
 
@@ -102,6 +104,94 @@ describe('how much of a string engineeringValue answers', () => {
 
   it('answers nothing for an address outside every group', () => {
     expect(shown({ 9: { dataType: 'utf8' } }, rowAt(9, 'ABCD'), [[0, 4]])).toBe(undefined)
+  })
+
+  // Two bytes per register, whatever characters they make: `中文` is six bytes
+  // in three registers, and `ABCD` is two registers after it.
+  describe('over bytes read from a device', () => {
+    const rows = convertRegisterData(
+      {
+        data: [],
+        buffer: Buffer.concat([Buffer.from('中文'), Buffer.from('ABCD')])
+      },
+      0,
+      byteOrderFlags('ABCD'),
+      false
+    )
+    const registerMap: RegisterMapObject = {
+      0: { dataType: 'utf8', length: 3 },
+      3: { dataType: 'utf8', length: 2 }
+    }
+    const shownAt = (address: number): number | string | undefined => {
+      const row = rows.find((candidate) => candidate.id === address)
+      if (!row) throw new Error(`No row at ${address}`)
+      return engineeringValue(row, registerMap, [[0, 5]], false)
+    }
+
+    it('keeps a multi-byte string to its own registers', () => {
+      expect(shownAt(0)).toBe('中文')
+    })
+
+    it('starts the point after it where its bytes start', () => {
+      expect(shownAt(3)).toBe('ABCD')
+    })
+
+    // Modbus registers beside a string are numbers, and their bytes are
+    // rarely UTF-8. Each point is decoded from its own bytes alone.
+    describe('with bytes that are not UTF-8', () => {
+      const pointsOf = (bytes: number[], lengths: number[]): (number | string | undefined)[] => {
+        const registerMap: RegisterMapObject = {}
+        let address = 0
+        for (const length of lengths) {
+          registerMap[address] = { dataType: 'utf8', length }
+          address += length
+        }
+        const rows = convertRegisterData(
+          { data: [], buffer: Buffer.from(bytes) },
+          0,
+          byteOrderFlags('ABCD'),
+          false
+        )
+        return Object.keys(registerMap).map((key) => {
+          const row = rows.find((candidate) => candidate.id === Number(key))
+          if (!row) throw new Error(`No row at ${key}`)
+          return engineeringValue(row, registerMap, [[0, address]], false)
+        })
+      }
+
+      it('keeps the next point whole after a point of invalid bytes', () => {
+        // 0xff 0xfe can start nothing; each decodes to one U+FFFD, not to
+        // three bytes that push `ABCD` out of its register.
+        expect(pointsOf([0xff, 0xfe, 0x41, 0x42, 0x43, 0x44], [1, 2])).toEqual([
+          '\ufffd\ufffd',
+          'ABCD'
+        ])
+      })
+
+      it('does not join a lead byte to a continuation byte of the next point', () => {
+        // 0xc2 0xa0 is U+00A0 when read together; across the point boundary
+        // it is a lone lead byte and a lone continuation byte.
+        expect(pointsOf([0x41, 0xc2, 0xa0, 0x42], [1, 1])).toEqual(['A\ufffd', '\ufffdB'])
+      })
+
+      it('still decodes a character that lies inside one point', () => {
+        expect(pointsOf([0xc2, 0xa0, 0x41, 0x42], [1, 1])).toEqual(['\u00a0', 'AB'])
+      })
+    })
+
+    it('still reads an ASCII point at two characters per register', () => {
+      const ascii = convertRegisterData(
+        { data: [], buffer: Buffer.from('ABCDEFGH') },
+        0,
+        byteOrderFlags('ABCD'),
+        false
+      )
+      const first = ascii[0]
+      if (!first) throw new Error('No row at 0')
+      expect(engineeringValue(first, { 0: { dataType: 'utf8', length: 2 } }, [[0, 4]], false)).toBe(
+        'ABCD'
+      )
+    })
   })
 })
 

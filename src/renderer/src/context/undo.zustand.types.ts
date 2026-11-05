@@ -87,6 +87,8 @@ export interface ClientConfiguration {
   connectionConfig: ConnectionConfig
   registerConfig: RegisterConfig
   registerMapping: RegisterMapping
+  /** Whether main reads the mapping's groups, which replacing the mapping turns off. */
+  readConfiguration: boolean
 }
 
 export interface ClientConfigurationStep {

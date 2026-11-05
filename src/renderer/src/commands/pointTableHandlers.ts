@@ -100,12 +100,10 @@ const clientApplyPointTable = async ({
         ...window,
         ...(byteOrder ? byteOrderFlags(byteOrder) : {})
       },
-      registerMapping
+      registerMapping,
+      readConfiguration: configuredReadGroups(true, window.type, registerMapping).length > 0
     })
   })
-  if (outcome === 'done' && configuredReadGroups(true, window.type, registerMapping).length > 0) {
-    useClientZustand.getState().setReadConfiguration(true)
-  }
   const after = useClientZustand.getState()
   return {
     outcome,

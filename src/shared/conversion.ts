@@ -115,6 +115,9 @@ export const convertRegisterData = (
   // register is made of.
   const registers = Math.floor(buffer.byteLength / 2)
 
+  // Mapped once; each row takes a view from its own offset on.
+  const spacedBuffer = buffer.map((b) => (b === 0 ? 32 : b))
+
   for (let i = 0; i < registers; i++) {
     const offset = i * 2 // Register (16 bits) = 2 bytes
 
@@ -148,8 +151,10 @@ export const convertRegisterData = (
         uint64: buf64 ? buf64.readBigUInt64BE(0) : BigInt(0),
         double: buf64 ? round(buf64.readDoubleBE(0), 10) : 0,
         datetime: buf64 ? parseIEC870DateTime(buf64) : '',
-        // Replace null values with spaces, starting from this register's
-        // offset so character indexing aligns with register positions.
+        // Null bytes as spaces, from this register's offset, so a point is
+        // cut by byte position. Not decoded here: `engineeringValue` decodes
+        // the bytes of one point, so a byte that is not UTF-8 cannot change
+        // what a neighbouring point reads.
         //
         // The rest of the read, with no ceiling of its own, because the
         // protocol is the ceiling: FC03 and FC04 answer at most 125 registers,
@@ -158,7 +163,7 @@ export const convertRegisterData = (
         // from 2.88 ms to 2.58 ms, median of 40, and cut what the grid draws
         // for a string read with read configuration off from 250 characters to
         // 48.
-        utf8: Buffer.from(buffer.subarray(offset).map((b) => (b === 0 ? 32 : b))).toString('utf-8')
+        utf8: spacedBuffer.subarray(offset)
       },
       bit: false,
       isScanned: isScanning

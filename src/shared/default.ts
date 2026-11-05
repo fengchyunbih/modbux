@@ -82,7 +82,7 @@ export const dummyWords: RegisterDataWords = {
   ['uint64']: 0n,
   ['double']: 0,
   ['datetime']: '',
-  ['utf8']: ''
+  ['utf8']: new Uint8Array()
 }
 
 export const getDummyRegisterData = (register: number): RegisterData => ({
