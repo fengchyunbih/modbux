@@ -11,6 +11,7 @@ import {
   disableReadConfiguration,
   cleanServerState,
   loadServerConfig,
+  cell,
   expectCell,
   expectColumn,
   openColumnMenu,
@@ -172,25 +173,24 @@ test.describe.serial('Client toolbar — display options and utilities', () => {
 
   // ─── Grid clearing behavior ────────────────────────────────────────
 
+  // The grid renders only the rows on screen, so a count of DOM rows varies
+  // with scrolling and timing. The first and the last row read say whether
+  // the data is still there.
   test('base change does not clear grid', async ({ mainPage }) => {
-    // Grid should have data from earlier read
-    const rowCount = await mainPage.locator('.MuiDataGrid-row').count()
-    expect(rowCount).toBeGreaterThan(0)
+    const first = await cell(mainPage, 0, 'hex')
+    const last = await cell(mainPage, 39, 'hex')
 
-    // Switch to base 1
     await mainPage.getByTestId('reg-base-1-btn').click()
-    await mainPage.waitForTimeout(300)
+    await expectCell(mainPage, 0, 'id', '1')
+    await expectCell(mainPage, 0, 'hex', first)
+    await expectCell(mainPage, 39, 'id', '40')
+    await expectCell(mainPage, 39, 'hex', last)
 
-    // Grid should still have data
-    const rowCountAfter = await mainPage.locator('.MuiDataGrid-row').count()
-    expect(rowCountAfter).toBe(rowCount)
-
-    // Switch back to base 0
     await mainPage.getByTestId('reg-base-0-btn').click()
-    await mainPage.waitForTimeout(300)
-
-    const rowCountReset = await mainPage.locator('.MuiDataGrid-row').count()
-    expect(rowCountReset).toBe(rowCount)
+    await expectCell(mainPage, 0, 'id', '0')
+    await expectCell(mainPage, 0, 'hex', first)
+    await expectCell(mainPage, 39, 'id', '39')
+    await expectCell(mainPage, 39, 'hex', last)
   })
 
   test('address change clears grid', async ({ mainPage }) => {
