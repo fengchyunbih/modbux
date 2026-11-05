@@ -295,6 +295,67 @@ describe('client_read_points', () => {
     expect((answer.rows as { value?: number }[])[0]?.value).toBe(0x12345678)
   })
 
+  // 2^53 + 1 has no double of its own, and Number() rounds it to 2^53.
+  it.each([
+    ['uint64', [0x0020, 0, 0, 1], '9007199254740993'],
+    ['int64', [0xffdf, 0xffff, 0xffff, 0xffff], '-9007199254740993']
+  ] as const)('answers an unscaled %s as its decimal string', async (dataType, words, expected) => {
+    const context = connected()
+    const mapping = emptyRegisterMapping()
+    mapping.holding_registers[0] = { dataType }
+    context.setMapping(mapping)
+    context.read.mockResolvedValue({
+      read: true,
+      data: holdingRows(0, [...words]),
+      groups: [[0, 4]],
+      errors: []
+    })
+    const client = await connectInMemory(context)
+
+    const answer = jsonOf(await client.callTool({ name: 'client_read_points', arguments: {} }))
+
+    expect((answer.rows as { value?: unknown }[])[0]?.value).toBe(expected)
+  })
+
+  it('answers a scaled uint64 as the number the grid shows', async () => {
+    const context = connected()
+    const mapping = emptyRegisterMapping()
+    mapping.holding_registers[0] = { dataType: 'uint64', scalingFactor: 0.1 }
+    context.setMapping(mapping)
+    context.read.mockResolvedValue({
+      read: true,
+      data: holdingRows(0, [0, 0, 0, 2301]),
+      groups: [[0, 4]],
+      errors: []
+    })
+    const client = await connectInMemory(context)
+
+    const answer = jsonOf(await client.callTool({ name: 'client_read_points', arguments: {} }))
+
+    expect((answer.rows as { value?: unknown }[])[0]?.value).toBe(230.1)
+  })
+
+  it('answers an interpolated uint64 as the number the grid shows', async () => {
+    const context = connected()
+    const mapping = emptyRegisterMapping()
+    mapping.holding_registers[0] = {
+      dataType: 'uint64',
+      interpolate: { x1: '0', x2: '10000', y1: '0', y2: '100' }
+    }
+    context.setMapping(mapping)
+    context.read.mockResolvedValue({
+      read: true,
+      data: holdingRows(0, [0, 0, 0, 2301]),
+      groups: [[0, 4]],
+      errors: []
+    })
+    const client = await connectInMemory(context)
+
+    const answer = jsonOf(await client.callTool({ name: 'client_read_points', arguments: {} }))
+
+    expect((answer.rows as { value?: unknown }[])[0]?.value).toBe(23)
+  })
+
   it('answers a bit for coils', async () => {
     const context = connected()
     context.appState.registerConfig.type = 'coils'
