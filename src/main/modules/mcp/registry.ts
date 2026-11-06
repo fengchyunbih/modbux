@@ -22,6 +22,8 @@ export interface McpToolContext {
     | 'scanUnitIds'
     | 'stopScanningRegisters'
     | 'stopScanningUnitIds'
+    | 'startPollingWhenSettled'
+    | 'stopPollingAndWait'
     | 'writeRaw'
   >
   appState: Pick<

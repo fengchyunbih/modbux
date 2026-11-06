@@ -5,6 +5,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { vi } from 'vitest'
 import {
   ClientConfigSnapshot,
+  clientOwner,
   ClientState,
   defaultClientState,
   defaultConnectionConfig,
@@ -55,6 +56,9 @@ export interface FakeContext extends McpToolContext {
   scanUnitIds: ReturnType<typeof vi.fn<McpToolContext['client']['scanUnitIds']>>
   stopScanningRegisters: ReturnType<typeof vi.fn<() => void>>
   stopScanningUnitIds: ReturnType<typeof vi.fn<() => void>>
+  /** Sets `polling` when the stand-in client is connected and free, as the real one does. */
+  startPollingWhenSettled: ReturnType<typeof vi.fn<() => Promise<boolean>>>
+  stopPollingAndWait: ReturnType<typeof vi.fn<() => Promise<void>>>
   writeRaw: ReturnType<typeof vi.fn<(request: RawWriteRequest) => Promise<WriteOutcome>>>
   send: ReturnType<typeof vi.fn>
 }
@@ -106,6 +110,15 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
   )
   const stopScanningRegisters = vi.fn<() => void>()
   const stopScanningUnitIds = vi.fn<() => void>()
+  const startPollingWhenSettled = vi.fn<() => Promise<boolean>>(async () => {
+    if (clientState.connectState === 'connected' && !clientOwner(clientState)) {
+      clientState = { ...clientState, polling: true }
+    }
+    return clientState.polling
+  })
+  const stopPollingAndWait = vi.fn<() => Promise<void>>(async () => {
+    clientState = { ...clientState, polling: false }
+  })
   const writeRaw = vi.fn<(request: RawWriteRequest) => Promise<WriteOutcome>>(async () => ({
     written: true
   }))
@@ -123,6 +136,8 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
       scanUnitIds,
       stopScanningRegisters,
       stopScanningUnitIds,
+      startPollingWhenSettled,
+      stopPollingAndWait,
       writeRaw,
       get state() {
         return clientState
@@ -173,6 +188,8 @@ export const fakeContext = (answers: CommandAnswers = {}): FakeContext => {
     scanUnitIds,
     stopScanningRegisters,
     stopScanningUnitIds,
+    startPollingWhenSettled,
+    stopPollingAndWait,
     writeRaw,
     send
   }

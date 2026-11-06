@@ -857,7 +857,44 @@ export class ModbusClient {
    * Awaited rather than refused, because stopping a poll to scan is what the
    * Start button has always done.
    */
-  private _pollRead: Promise<ReadOutcome> | undefined
+  private _pollReads = new Set<Promise<ReadOutcome>>()
+
+  /** Every read a poll chain has on the wire, not only the newest chain's. */
+  private _pollReadsSettled = async (): Promise<void> => {
+    await Promise.allSettled([...this._pollReads])
+  }
+
+  /**
+   * Which start or stop asked last. A start waiting for the poll's last read
+   * goes ahead only if no stop has asked since, so a later stop is not undone
+   * by an earlier start that was waiting on the same read.
+   */
+  private _pollRequest = 0
+
+  /**
+   * `stopPolling`, then the poll's last read. A caller that goes on to put its
+   * own request on the client waits here, for the reason the scans do.
+   */
+  public stopPollingAndWait = async (): Promise<void> => {
+    // A stop asked for outlasts a reconnect that would have resumed the poll.
+    this._reconnectWasPolling = false
+    clearTimeout(this._reconnectResumePollingTimeout)
+    this._pollRequest++
+    this.stopPolling()
+    await this._pollReadsSettled()
+  }
+
+  /**
+   * Start a poll once every read of an earlier poll has answered, unless a
+   * stop has asked since. Answers whether it started.
+   */
+  public startPollingWhenSettled = async (): Promise<boolean> => {
+    const request = ++this._pollRequest
+    await this._pollReadsSettled()
+    if (request !== this._pollRequest) return false
+    this.startPolling()
+    return this._clientState.polling
+  }
 
   /**
    * Read, then arm the next read, as long as this chain is still the current one.
@@ -869,11 +906,12 @@ export class ModbusClient {
    * timer nothing can clear.
    */
   private _poll = async (generation: number): Promise<void> => {
-    this._pollRead = this._read()
+    const pollRead = this._read()
+    this._pollReads.add(pollRead)
     try {
-      await this._pollRead
+      await pollRead
     } finally {
-      this._pollRead = undefined
+      this._pollReads.delete(pollRead)
     }
     if (generation !== this._pollGeneration) return
     this._pollTimeout = setTimeout(
@@ -1148,7 +1186,7 @@ export class ModbusClient {
     if (!this._requireConnected('scan')) return { scanned: false, reason: 'not_connected' }
     if (!this._requireClient('scan', true)) return { scanned: false, reason: 'busy' }
     this.stopPolling()
-    await this._pollRead
+    await this._pollReadsSettled()
 
     this._client.setTimeout(params.timeout)
     this._clientState.scanningUnitIds = true
@@ -1237,7 +1275,7 @@ export class ModbusClient {
     if (!this._requireConnected('scan')) return { scanned: false, reason: 'not_connected' }
     if (!this._requireClient('scan', true)) return { scanned: false, reason: 'busy' }
     this.stopPolling()
-    await this._pollRead
+    await this._pollReadsSettled()
 
     const { unitId } = this._appState.connectionConfig
     this._client.setID(unitId)

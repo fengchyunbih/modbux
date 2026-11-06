@@ -299,6 +299,68 @@ const clientReadPoints = defineTool({
 
 //
 //
+// client_start_polling
+
+const clientStartPolling = defineTool({
+  name: 'client_start_polling',
+  title: 'Start polling',
+  description:
+    'Start the poll of the Modbus client, the way the POLL button does: it reads at the poll rate until client_stop_polling, and the Modbux grid updates with every read. Needs a connected client. Already polling is not an error. While it polls, client_read_points is refused; stop it first.',
+  inputSchema: {},
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true
+  },
+  run: async (_input, context) => {
+    const { client } = context
+    if (client.state.connectState === 'connecting') {
+      return toolError('The client is reconnecting. Try again once it has connected.')
+    }
+    if (client.state.connectState !== 'connected') return toolError(READ_REFUSALS.not_connected)
+    if (client.state.polling) return toolResult({ polling: true, message: 'Already polling' })
+    const owner = clientOwner(client.state)
+    if (owner) return toolError(`Cannot poll during ${owner}. Try again once it has finished.`)
+
+    // A poll stopped from the window may still have a read on the wire, and a
+    // stop that arrives while this waits cancels the start.
+    const started = await client.startPollingWhenSettled()
+    if (!started) {
+      return toolError(
+        'The poll did not start. The client may have disconnected; check client_get_config.'
+      )
+    }
+    return toolResult({ polling: true })
+  }
+})
+
+//
+//
+// client_stop_polling
+
+const clientStopPolling = defineTool({
+  name: 'client_stop_polling',
+  title: 'Stop polling',
+  description:
+    "Stop the poll of the Modbus client, the way the POLL button does, and wait for the poll's last read to finish, so a request can follow at once. Not polling is not an error.",
+  inputSchema: {},
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true
+  },
+  run: async (_input, context) => {
+    // Awaited even when `polling` is already false: a stop from the POLL button
+    // or a scan clears it while the poll's last read is still on the wire.
+    await context.client.stopPollingAndWait()
+    return toolResult({ polling: context.client.state.polling })
+  }
+})
+
+//
+//
 // Point table tools: the connection, a point table and a write
 
 //
@@ -560,6 +622,8 @@ export const clientTools: readonly McpTool[] = [
   clientConnect,
   clientDisconnect,
   clientReadPoints,
+  clientStartPolling,
+  clientStopPolling,
   // Point table tools
   clientSetConnection,
   clientApplyPointTable,
