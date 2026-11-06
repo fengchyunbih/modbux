@@ -1,14 +1,46 @@
 # Modbux
 
-> by [ploxc](https://github.com/ploxc)
+> A fork of [ploxc/modbux](https://github.com/ploxc/modbux) by [ploxc](https://github.com/ploxc). It adds an MCP server, so an AI agent can drive the client and the server.
+
+## Let an AI agent install it
+
+Paste this into Claude Code, Codex, Antigravity or any agent that can run shell commands:
+
+````text
+Install Modbux from https://github.com/fengchyunbih/modbux (branch icp) and
+connect it to yourself as an MCP server. Do these in order, and stop at step 2.
+
+1. Clone the repo and run `yarn` in it (needs Node.js LTS and Yarn). Start the app
+   with `yarn dev`.
+2. Ask me to open the Modbux window, press the settings button on the Home screen,
+   open the MCP page and switch "Enable MCP" on. It is off by default and only I can
+   switch it. Leave "Allow writes to devices" off unless I say otherwise. Wait for me.
+3. Read the token from mcp.json in Modbux's user data directory:
+   macOS ~/Library/Application Support/Modbux, Windows %APPDATA%\Modbux,
+   Linux ~/.config/modbux when run from source.
+4. Register the MCP server in the client you are running in.
+   - Claude Code:
+     claude mcp add --transport http modbux http://127.0.0.1:15502/mcp --header "Authorization: Bearer <token>"
+   - A client without HTTP headers (Codex and others): run `npx electron-vite build`
+     once, then register the command `node <repo>/out/main/mcpStdio.js` with the
+     environment variable MODBUX_MCP_TOKEN set to the token.
+5. Check it: call the tool server_list. An error that starts with "Modbux endpoint:"
+   means Modbux is not running or MCP is not enabled.
+6. Tell me what I can ask you now. The MCP prompts take a pasted point table:
+   point_table_to_client reads the device, point_table_to_simulator builds a simulated
+   server, closed_loop_test checks both against each other. Scanning unit IDs and
+   registers, polling and reading work without writes. Writing to a device needs
+   "Allow writes to devices".
+````
+
+The details are in [docs/mcp.md](docs/mcp.md).
 
 <img src="./resources/icon.png" alt="Logo" width="60" />
 
-[![Release](https://img.shields.io/github/v/release/ploxc/modbux?color=5b9279)](https://github.com/ploxc/modbux/releases)
-[![Downloads](https://img.shields.io/github/downloads/ploxc/modbux/total?color=5b9279&label=downloads)](https://github.com/ploxc/modbux/releases)
-[![License](https://img.shields.io/github/license/ploxc/modbux?color=5b9279)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/fengchyunbih/modbux?color=5b9279)](https://github.com/fengchyunbih/modbux/releases)
+[![Downloads](https://img.shields.io/github/downloads/fengchyunbih/modbux/total?color=5b9279&label=downloads)](https://github.com/fengchyunbih/modbux/releases)
+[![License](https://img.shields.io/github/license/fengchyunbih/modbux?color=5b9279)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-5b9279)
-[![Buy me a coffee on Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-5b9279?logo=kofi&logoColor=white)](https://ko-fi.com/ploxc)
 
 ## An Open Source Modbus Client & Server Simulation Tool for Windows, macOS and Linux
 
@@ -16,12 +48,13 @@
 
 ## Download
 
-**[Download the latest release](https://ploxc.com/modbux)**
+**[Download the latest release](https://github.com/fengchyunbih/modbux/releases/latest)**
 
 Installers for Windows, and for macOS on both Apple silicon and Intel. Linux gets a `.deb`
 and an `.AppImage`, x64 and arm64.
 
-**[Read the documentation](https://ploxc.com/modbux/docs/latest/getting-started)**
+**[Read the MCP documentation](docs/mcp.md)**, and the
+[upstream documentation](https://ploxc.com/modbux/docs/latest/getting-started) for the rest of the app.
 
 ## Features
 
@@ -78,7 +111,7 @@ every data type applied to the same registers at once, endianness you can flip, 
 and a scan that tells you where the data is instead of only which unit answered.
 
 If you want it laid out tool by tool, there is a
-[comparison page](https://ploxc.com/modbux/alternatives) on the site.
+[comparison page](https://ploxc.com/modbux/alternatives) on the upstream site.
 
 ## UI
 
@@ -116,9 +149,7 @@ Built with Electron, React, and Material-UI. Open source because this industry n
 
 ### Free, and Staying Free
 
-No account, no trial, no paid tier. If Modbux saved you an afternoon on site, you can buy
-me a [coffee](https://ko-fi.com/ploxc). The current goal is an Apple Developer certificate,
-so macOS stops warning that the app is damaged on first launch.
+No account, no trial, no paid tier.
 
 ## Why "Modbux"?
 
@@ -132,23 +163,23 @@ Saved configs are JSON. Show Claude or ChatGPT a few example registers, paste yo
 
 ### Windows
 
-Download the `.exe` file from releases.
+Download the `.exe` file from [releases](https://github.com/fengchyunbih/modbux/releases).
 
 ⚠️ **SmartScreen warning**: Click "More info" → "Run anyway"
 
 ### macOS
 
-Download the `.dmg` file from releases. Pick `arm64` for Apple silicon and `x64` for Intel.
+Download the `.dmg` file from [releases](https://github.com/fengchyunbih/modbux/releases). Pick `arm64` for Apple silicon and `x64` for Intel.
 
 **macOS 12 or newer.** Modbux 2.3 moved to Electron 43, which does not run on Catalina or
-Big Sur. Modbux 2.2.1 still does, and stays on the releases page.
+Big Sur. Modbux 2.2.1 still does, and stays on the [upstream releases page](https://github.com/ploxc/modbux/releases).
 
 ⚠️ **First time opening**: Right-click the app and select "Open"
 (or go to System Preferences → Security & Privacy → "Open Anyway")
 
 ### Linux
 
-Download the `.deb` or the `.AppImage` from releases, x64 or arm64. Building from source
+Download the `.deb` or the `.AppImage` from [releases](https://github.com/fengchyunbih/modbux/releases), x64 or arm64. Building from source
 works too, see [Build It Yourself](#build-it-yourself).
 
 Two things on Linux need a permission the app cannot give itself, and Modbux asks about
@@ -180,7 +211,7 @@ Modbux is an Electron application built with React, TypeScript, and Material-UI.
 **Clone and install dependencies:**
 
 ```bash
-git clone https://github.com/ploxc/modbux.git
+git clone https://github.com/fengchyunbih/modbux.git
 cd modbux
 yarn
 ```
@@ -301,9 +332,7 @@ yarn build:linux
 
 ## Contributing
 
-Found a bug? Have a feature request? **Please open an issue!** Modbux was born from real-world frustrations, and your feedback helps make it better for everyone in the industry.
-
-Feel free to contribute—whether it's reporting issues, suggesting features, or submitting pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Let's build the Modbus tool we all wish we'd had from day one.
+This fork has issues disabled. Open a pull request into `icp` on [fengchyunbih/modbux](https://github.com/fengchyunbih/modbux). See [CONTRIBUTING.md](CONTRIBUTING.md) for the rules. A bug in the upstream app goes to [ploxc/modbux](https://github.com/ploxc/modbux/issues).
 
 ## License
 
