@@ -7,23 +7,27 @@
 Paste this into Claude Code, Codex, Antigravity or any agent that can run shell commands:
 
 ````text
-Install Modbux from https://github.com/fengchyunbih/modbux (branch icp) and
-connect it to yourself as an MCP server. Do these in order, and stop at step 2.
+Install Modbux from its latest release at https://github.com/fengchyunbih/modbux/releases
+and connect it to yourself as an MCP server. Do these in order, and stop at step 2.
+Do not build from source.
 
-1. Clone the repo and run `yarn` in it (needs Node.js LTS and Yarn). Start the app
-   with `yarn dev`.
+1. Download the installer for my OS and CPU from the latest release, and install it:
+   macOS .dmg (arm64 for Apple silicon, x64 for Intel), Windows x64-setup.exe, Linux
+   .deb or .AppImage. For example: gh release download -R fengchyunbih/modbux --pattern "*arm64.dmg"
+   If macOS says the app is damaged, tell me; I open it with right-click, Open.
+   Then start Modbux.
 2. Ask me to open the Modbux window, press the settings button on the Home screen,
    open the MCP page and switch "Enable MCP" on. It is off by default and only I can
    switch it. Leave "Allow writes to devices" off unless I say otherwise. Wait for me.
 3. Read the token from mcp.json in Modbux's user data directory:
    macOS ~/Library/Application Support/Modbux, Windows %APPDATA%\Modbux,
-   Linux ~/.config/modbux when run from source.
+   Linux ~/.config/Modbux.
 4. Register the MCP server in the client you are running in.
    - Claude Code:
      claude mcp add --transport http modbux http://127.0.0.1:15502/mcp --header "Authorization: Bearer <token>"
-   - A client without HTTP headers (Codex and others): run `npx electron-vite build`
-     once, then register the command `node <repo>/out/main/mcpStdio.js` with the
-     environment variable MODBUX_MCP_TOKEN set to the token.
+   - A client without HTTP headers (Codex and others): ask me to copy the stdio command
+     shown on the same MCP page ("Any client that starts a stdio server") and register
+     it. It reads the token from mcp.json by itself.
 5. Check it: call the tool server_list. An error that starts with "Modbux endpoint:"
    means Modbux is not running or MCP is not enabled.
 6. Tell me what I can ask you now. The MCP prompts take a pasted point table:
