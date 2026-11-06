@@ -1,6 +1,6 @@
 {
   "name": "modbux",
-  "version": "2.3.0-icp.1",
+  "version": "2.3.0-icp.2",
   "description": "A Modbus Client/Server tool",
   "main": "./out/main/index.js",
   "author": {
