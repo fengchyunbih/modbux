@@ -24,6 +24,21 @@ src/renderer/  the React UI
 
 `@renderer/*` and `@shared` are the import aliases. There are no others.
 
+# Branches and releases
+
+This is a fork (`origin`, `fengchyunbih/modbux`) of `ploxc/modbux` (`upstream`).
+Nothing here is contributed upstream until the owner says so.
+
+- `main` mirrors `upstream/main`. Do not commit to it, and do not branch from it.
+- `icp` is this fork's trunk. Branch from `icp`, open the PR into `icp`, and
+  open it on `origin`.
+- A release bumps `version` in `package.json` to `X.Y.Z-icp.N` on `icp`, commits
+  it as `chore: release X.Y.Z-icp.N`, and pushes the tag `vX.Y.Z-icp.N`. The tag
+  triggers `.github/workflows/release.yml`. `N` restarts at 1 when upstream's
+  `X.Y.Z` changes.
+- Syncing upstream: fast-forward `main` to `upstream/main`, then merge `main`
+  into `icp`.
+
 # What breaks if you do not know it
 
 - **Nothing in `src/shared` may import from `src/main`, or from `electron`.**

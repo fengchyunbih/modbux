@@ -5,6 +5,28 @@ conventions this codebase has already settled_ are asserted by
 `src/__tests__/conformance.test.ts`, so breaking one fails `yarn test` instead of
 waiting for a reviewer.
 
+## This fork
+
+The rules below came from upstream (`ploxc/modbux`). This fork (`origin`,
+`fengchyunbih/modbux`) works as follows, and where it differs from the rest of
+this file, this section wins.
+
+- **No upstream contributions by default.** The owner says when a change goes
+  upstream. Until then every PR targets `icp` on `origin`.
+- **`main` mirrors `upstream/main`.** Never commit to it. Sync it by
+  fast-forwarding to `upstream/main`, then merge `main` into `icp`.
+- **`icp` is the trunk.** Branch from `icp` as `feature/description` or
+  `fix/description`, and merge back into `icp` through a PR. CI runs on pull
+  requests.
+- **An issue first is optional here.** It is required only for a change that
+  will go upstream.
+- **A release bumps the version.** On `icp`, set `version` in `package.json` to
+  `X.Y.Z-icp.N`, commit it as `chore: release X.Y.Z-icp.N`, and push the tag
+  `vX.Y.Z-icp.N`. The tag triggers the release workflow. `N` restarts at 1 when
+  upstream's `X.Y.Z` changes. A feature PR does not bump it.
+- **A change meant for upstream** branches from `main` instead, after it is synced,
+  and follows the rest of this file as written.
+
 ## Ground rules
 
 1. **Open an issue first.** Describe the bug or the feature before writing code, so a change that does not fit the project's direction is found before you build it.
@@ -310,12 +332,12 @@ generic driver claims the device. Every `test:all:*` ends with this round, and
 
 ## Pull requests
 
-1. Branch from `main`. Use `feature/description` or `fix/description`.
+1. Branch from `icp` (from `main` for a change meant for upstream). Use `feature/description` or `fix/description`.
 2. Keep commits clean. Squash fixups before requesting review.
 3. Write a clear PR description: what changed, why, and how to test it.
 4. `yarn verify` must pass. No exceptions.
 5. Screenshots for UI changes. Before and after.
-6. Don't bump the version number. That's done at release time.
+6. Don't bump the version number in a feature PR. That's done at release time.
 
 ## What will get your PR rejected
 
