@@ -860,6 +860,18 @@ export class ModbusClient {
   private _pollRead: Promise<ReadOutcome> | undefined
 
   /**
+   * `stopPolling`, then the poll's last read. A caller that goes on to put its
+   * own request on the client waits here, for the reason the scans do.
+   */
+  public stopPollingAndWait = async (): Promise<void> => {
+    // A stop asked for outlasts a reconnect that would have resumed the poll.
+    this._reconnectWasPolling = false
+    clearTimeout(this._reconnectResumePollingTimeout)
+    this.stopPolling()
+    await this._pollRead
+  }
+
+  /**
    * Read, then arm the next read, as long as this chain is still the current one.
    *
    * `stopPolling` clears the handle a sleeping chain holds, and a chain that is
@@ -869,11 +881,13 @@ export class ModbusClient {
    * timer nothing can clear.
    */
   private _poll = async (generation: number): Promise<void> => {
-    this._pollRead = this._read()
+    const pollRead = this._read()
+    this._pollRead = pollRead
     try {
-      await this._pollRead
+      await pollRead
     } finally {
-      this._pollRead = undefined
+      // A newer chain may have replaced it while this read was on the wire.
+      if (this._pollRead === pollRead) this._pollRead = undefined
     }
     if (generation !== this._pollGeneration) return
     this._pollTimeout = setTimeout(

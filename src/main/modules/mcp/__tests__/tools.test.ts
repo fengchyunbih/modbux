@@ -49,7 +49,9 @@ describe('the tool list', () => {
       'client_get_config',
       'client_connect',
       'client_disconnect',
-      'client_read_points'
+      'client_read_points',
+      'client_start_polling',
+      'client_stop_polling'
     ]
     expect(
       tools
@@ -59,7 +61,9 @@ describe('the tool list', () => {
       ['client_get_config', true],
       ['client_connect', false],
       ['client_disconnect', false],
-      ['client_read_points', true]
+      ['client_read_points', true],
+      ['client_start_polling', false],
+      ['client_stop_polling', false]
     ])
     // Connecting talks to a device and changes nothing it holds.
     for (const tool of tools.filter((tool) => client4.includes(tool.name))) {
@@ -72,22 +76,26 @@ describe('the tool list', () => {
 })
 
 describe('every tool, with the main window closed', () => {
-  it.each(['client_get_config', 'client_connect', 'client_disconnect', 'client_read_points'])(
-    '%s answers an error and reaches nothing',
-    async (name) => {
-      const context = fakeContext()
-      context.setClientState({ connectState: 'connected' })
-      context.setMainWindowOpen(false)
-      const client = await connectInMemory(context)
+  it.each([
+    'client_get_config',
+    'client_connect',
+    'client_disconnect',
+    'client_read_points',
+    'client_start_polling',
+    'client_stop_polling'
+  ])('%s answers an error and reaches nothing', async (name) => {
+    const context = fakeContext()
+    context.setClientState({ connectState: 'connected' })
+    context.setMainWindowOpen(false)
+    const client = await connectInMemory(context)
 
-      const result = await client.callTool({ name, arguments: {} })
+    const result = await client.callTool({ name, arguments: {} })
 
-      expect(result.isError).toBe(true)
-      expect(textOf(result)).toBe(MAIN_WINDOW_CLOSED)
-      expect(context.send).not.toHaveBeenCalled()
-      expect(context.read).not.toHaveBeenCalled()
-    }
-  )
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toBe(MAIN_WINDOW_CLOSED)
+    expect(context.send).not.toHaveBeenCalled()
+    expect(context.read).not.toHaveBeenCalled()
+  })
 })
 
 describe('client_get_config', () => {
@@ -219,13 +227,13 @@ describe('client_disconnect', () => {
   })
 })
 
-describe('client_read_points', () => {
-  const connected = () => {
-    const context = fakeContext()
-    context.setClientState({ connectState: 'connected' })
-    return context
-  }
+const connected = () => {
+  const context = fakeContext()
+  context.setClientState({ connectState: 'connected' })
+  return context
+}
 
+describe('client_read_points', () => {
   it('answers each address with its word, and the mapped ones with their value', async () => {
     const context = connected()
     context.appState.registerConfig.addressBase = '1'
@@ -504,6 +512,122 @@ describe('client_read_points', () => {
 
     expect(result.isError).toBe(true)
     expect(jsonOf(result).errors).toEqual([{ address: 0, length: 1, message: 'Timed out' }])
+  })
+})
+
+describe('client_start_polling', () => {
+  const start = (client: Awaited<ReturnType<typeof connectInMemory>>) =>
+    client.callTool({ name: 'client_start_polling', arguments: {} })
+
+  it('starts the poll of a connected client', async () => {
+    const context = connected()
+    const client = await connectInMemory(context)
+
+    const result = await start(client)
+
+    expect(result.isError).toBeUndefined()
+    expect(jsonOf(result)).toEqual({ polling: true })
+    expect(context.startPolling).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers success without a second start when it already polls', async () => {
+    const context = connected()
+    context.setClientState({ polling: true })
+    const client = await connectInMemory(context)
+
+    const result = await start(client)
+
+    expect(result.isError).toBeUndefined()
+    expect(jsonOf(result)).toEqual({ polling: true, message: 'Already polling' })
+    expect(context.startPolling).not.toHaveBeenCalled()
+  })
+
+  it('says it is reconnecting while connecting, and starts nothing', async () => {
+    const context = fakeContext()
+    context.setClientState({ connectState: 'connecting' })
+    const client = await connectInMemory(context)
+
+    const result = await start(client)
+
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain('reconnecting')
+    expect(context.startPolling).not.toHaveBeenCalled()
+  })
+
+  it('waits out the last read of a stopped poll before it starts', async () => {
+    const context = connected()
+    const client = await connectInMemory(context)
+
+    await start(client)
+
+    expect(context.stopPollingAndWait.mock.invocationCallOrder[0]).toBeLessThan(
+      context.startPolling.mock.invocationCallOrder[0] ?? 0
+    )
+  })
+
+  it('points at client_connect while disconnected, and starts nothing', async () => {
+    const context = fakeContext()
+    const client = await connectInMemory(context)
+
+    const result = await start(client)
+
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toBe('The client is not connected. Call client_connect first.')
+    expect(context.startPolling).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [{ scanningRegisters: true }, 'a register scan'],
+    [{ scanningUnitIds: true }, 'a unit id scan'],
+    [{ writing: true }, 'another write']
+  ] as const)('refuses during %j, naming the owner', async (state, owner) => {
+    const context = connected()
+    context.setClientState(state)
+    const client = await connectInMemory(context)
+
+    const result = await start(client)
+
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toBe(`Cannot poll during ${owner}. Try again once it has finished.`)
+    expect(context.startPolling).not.toHaveBeenCalled()
+  })
+
+  it('answers an error when startPolling returns and polling is still off', async () => {
+    const context = connected()
+    context.startPolling.mockImplementation(() => undefined)
+    const client = await connectInMemory(context)
+
+    const result = await start(client)
+
+    expect(result.isError).toBe(true)
+    expect(textOf(result)).toContain('The poll did not start')
+  })
+})
+
+describe('client_stop_polling', () => {
+  const stop = (client: Awaited<ReturnType<typeof connectInMemory>>) =>
+    client.callTool({ name: 'client_stop_polling', arguments: {} })
+
+  it('stops the poll and waits for its last read', async () => {
+    const context = connected()
+    context.setClientState({ polling: true })
+    const client = await connectInMemory(context)
+
+    const result = await stop(client)
+
+    expect(jsonOf(result)).toEqual({ polling: false })
+    expect(context.stopPollingAndWait).toHaveBeenCalledTimes(1)
+  })
+
+  it('still waits when polling is already false, for a read the window left on the wire', async () => {
+    const context = connected()
+    const client = await connectInMemory(context)
+
+    const result = await stop(client)
+
+    expect(result.isError).toBeUndefined()
+    expect(jsonOf(result)).toEqual({ polling: false })
+    expect(context.stopPollingAndWait).toHaveBeenCalledTimes(1)
   })
 })
 

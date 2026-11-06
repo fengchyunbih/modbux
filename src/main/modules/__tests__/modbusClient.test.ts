@@ -1087,6 +1087,39 @@ describe('ModbusClient', () => {
       client.stopPolling()
     })
 
+    it('stopPollingAndWait returns only after the poll read in flight has answered', async () => {
+      await connectClient()
+      const gate = gateTheReads()
+      client.startPolling()
+      await vi.advanceTimersByTimeAsync(100)
+
+      let settled = false
+      const stopped = client.stopPollingAndWait().then(() => {
+        settled = true
+      })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(client.state.polling).toBe(false)
+      expect(settled).toBe(false)
+
+      gate.resolveAll()
+      await vi.advanceTimersByTimeAsync(100)
+      await stopped
+      expect(settled).toBe(true)
+    })
+
+    it('stopPollingAndWait cancels the poll a reconnect would resume', async () => {
+      await connectClient()
+      const startPolling = vi.spyOn(client, 'startPolling')
+      ;(client as unknown as { _reconnectWasPolling: boolean })._reconnectWasPolling = true
+
+      await client.stopPollingAndWait()
+
+      expect((client as unknown as { _reconnectWasPolling: boolean })._reconnectWasPolling).toBe(
+        false
+      )
+      expect(startPolling).not.toHaveBeenCalled()
+    })
+
     it('clears polling state on stopPolling', async () => {
       await connectClient()
 
