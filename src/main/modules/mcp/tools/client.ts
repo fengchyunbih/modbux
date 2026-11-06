@@ -323,11 +323,10 @@ const clientStartPolling = defineTool({
     const owner = clientOwner(client.state)
     if (owner) return toolError(`Cannot poll during ${owner}. Try again once it has finished.`)
 
-    // A poll stopped from the window may still have a read on the wire.
-    await client.stopPollingAndWait()
-    client.startPolling()
-    // startPolling answers nothing, so whether it started is read back.
-    if (!client.state.polling) {
+    // A poll stopped from the window may still have a read on the wire, and a
+    // stop that arrives while this waits cancels the start.
+    const started = await client.startPollingWhenSettled()
+    if (!started) {
       return toolError(
         'The poll did not start. The client may have disconnected; check client_get_config.'
       )

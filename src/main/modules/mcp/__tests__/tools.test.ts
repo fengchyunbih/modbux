@@ -527,7 +527,7 @@ describe('client_start_polling', () => {
 
     expect(result.isError).toBeUndefined()
     expect(jsonOf(result)).toEqual({ polling: true })
-    expect(context.startPolling).toHaveBeenCalledTimes(1)
+    expect(context.startPollingWhenSettled).toHaveBeenCalledTimes(1)
   })
 
   it('answers success without a second start when it already polls', async () => {
@@ -539,7 +539,7 @@ describe('client_start_polling', () => {
 
     expect(result.isError).toBeUndefined()
     expect(jsonOf(result)).toEqual({ polling: true, message: 'Already polling' })
-    expect(context.startPolling).not.toHaveBeenCalled()
+    expect(context.startPollingWhenSettled).not.toHaveBeenCalled()
   })
 
   it('says it is reconnecting while connecting, and starts nothing', async () => {
@@ -551,18 +551,7 @@ describe('client_start_polling', () => {
 
     expect(result.isError).toBe(true)
     expect(textOf(result)).toContain('reconnecting')
-    expect(context.startPolling).not.toHaveBeenCalled()
-  })
-
-  it('waits out the last read of a stopped poll before it starts', async () => {
-    const context = connected()
-    const client = await connectInMemory(context)
-
-    await start(client)
-
-    expect(context.stopPollingAndWait.mock.invocationCallOrder[0]).toBeLessThan(
-      context.startPolling.mock.invocationCallOrder[0] ?? 0
-    )
+    expect(context.startPollingWhenSettled).not.toHaveBeenCalled()
   })
 
   it('points at client_connect while disconnected, and starts nothing', async () => {
@@ -573,7 +562,7 @@ describe('client_start_polling', () => {
 
     expect(result.isError).toBe(true)
     expect(textOf(result)).toBe('The client is not connected. Call client_connect first.')
-    expect(context.startPolling).not.toHaveBeenCalled()
+    expect(context.startPollingWhenSettled).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -589,12 +578,12 @@ describe('client_start_polling', () => {
 
     expect(result.isError).toBe(true)
     expect(textOf(result)).toBe(`Cannot poll during ${owner}. Try again once it has finished.`)
-    expect(context.startPolling).not.toHaveBeenCalled()
+    expect(context.startPollingWhenSettled).not.toHaveBeenCalled()
   })
 
-  it('answers an error when startPolling returns and polling is still off', async () => {
+  it('answers an error when the start is cancelled or refused', async () => {
     const context = connected()
-    context.startPolling.mockImplementation(() => undefined)
+    context.startPollingWhenSettled.mockResolvedValue(false)
     const client = await connectInMemory(context)
 
     const result = await start(client)

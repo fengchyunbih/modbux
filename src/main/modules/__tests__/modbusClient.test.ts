@@ -1107,17 +1107,88 @@ describe('ModbusClient', () => {
       expect(settled).toBe(true)
     })
 
-    it('stopPollingAndWait cancels the poll a reconnect would resume', async () => {
+    it('stopPollingAndWait cancels the poll a reconnect has scheduled to resume', async () => {
       await connectClient()
-      const startPolling = vi.spyOn(client, 'startPolling')
-      ;(client as unknown as { _reconnectWasPolling: boolean })._reconnectWasPolling = true
+      setupHoldingRegisterReadMock([100])
+      client.startPolling()
+      await vi.advanceTimersByTimeAsync(100)
+      mockModbusRTU.isOpen = false
+      fireClientEvent('close')
+      // The reconnect lands at 3000 ms and schedules the resume 1000 after it.
+      await vi.advanceTimersByTimeAsync(3100)
 
       await client.stopPollingAndWait()
+      await vi.advanceTimersByTimeAsync(2000)
 
-      expect((client as unknown as { _reconnectWasPolling: boolean })._reconnectWasPolling).toBe(
-        false
+      expect(client.state.polling).toBe(false)
+    })
+
+    it('startPollingWhenSettled waits for the read of a stopped poll, then starts', async () => {
+      await connectClient()
+      const gate = gateTheReads()
+      client.startPolling()
+      await vi.advanceTimersByTimeAsync(100)
+      client.stopPolling()
+
+      const started = client.startPollingWhenSettled()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(client.state.polling).toBe(false)
+      expect(mockModbusRTU.readHoldingRegisters).toHaveBeenCalledTimes(1)
+
+      gate.resolveAll()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(await started).toBe(true)
+      expect(client.state.polling).toBe(true)
+      client.stopPolling()
+    })
+
+    it('a stop that comes while a start waits cancels the start', async () => {
+      await connectClient()
+      const gate = gateTheReads()
+      client.startPolling()
+      await vi.advanceTimersByTimeAsync(100)
+      client.stopPolling()
+
+      const started = client.startPollingWhenSettled()
+      const stopped = client.stopPollingAndWait()
+      gate.resolveAll()
+      await vi.advanceTimersByTimeAsync(100)
+      await stopped
+
+      expect(await started).toBe(false)
+      expect(client.state.polling).toBe(false)
+    })
+
+    it('stopPollingAndWait waits for every read, not only the newest chain', async () => {
+      await connectClient()
+      const gates: Array<() => void> = []
+      mockModbusRTU.readHoldingRegisters.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            gates.push(() => resolve({ data: [100], buffer: Buffer.from([0x00, 0x64]) }))
+          })
       )
-      expect(startPolling).not.toHaveBeenCalled()
+      // Chain A, stopped, then chain B started from the window while A's read is out.
+      client.startPolling()
+      await vi.advanceTimersByTimeAsync(100)
+      client.stopPolling()
+      client.startPolling()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(gates).toHaveLength(2)
+
+      let settled = false
+      const stopped = client.stopPollingAndWait().then(() => {
+        settled = true
+      })
+      // B answers first; A is still on the wire.
+      gates[1]?.()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(settled).toBe(false)
+
+      gates[0]?.()
+      await vi.advanceTimersByTimeAsync(100)
+      await stopped
+      expect(settled).toBe(true)
     })
 
     it('clears polling state on stopPolling', async () => {
